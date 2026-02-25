@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cmath>
 #include <cstdint>
 using namespace std;
 
@@ -57,13 +58,30 @@ bool SolovayStrassen(uint64_t p) {
     return true;
 }
 
+uint64_t TrialDivision (uint64_t n) {
+
+    uint64_t N = floor(sqrt(n));
+    uint64_t d = 1;
+
+    for (uint64_t i = d + 1; i < N; i++){
+        if (n % i == 0) return i;
+    }
+
+    return d;
+}
+
+
 
 
 int main()
 {
-    uint64_t n = 2147483647;
-    if (SolovayStrassen(n)) cout << "yippee";
-    else cout << "womp womp";
+    uint64_t n = 1184056490329830239;
+    if (SolovayStrassen(n)) cout << "yippee\n";
+    else cout << "womp womp\n";
+
+    cout << TrialDivision(n);
 
     return 0;
 }
+
+
