@@ -58,7 +58,7 @@ bool SolovayStrassen(uint64_t p) {
     return true;
 }
 
-uint64_t TrialDivision (uint64_t n) {
+uint64_t TrialDivision(uint64_t n) {
 
     uint64_t N = floor(sqrt(n));
     uint64_t d = 1;
@@ -70,7 +70,34 @@ uint64_t TrialDivision (uint64_t n) {
     return d;
 }
 
+uint64_t Polynomial (uint64_t x, uint64_t n){
+    return (x*x + 1) % n;
+}
 
+uint64_t GCD (uint64_t a, uint64_t b){
+    while (b != 0){
+        uint64_t temp = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
+}
+
+uint64_t Pollard_rho_Floyd (uint64_t n){
+
+    uint64_t x = 2, y = x;
+    uint64_t d = 1;
+
+    while (d == 1){
+        x = Polynomial(x, n);
+        y = Polynomial(Polynomial(y, n), n);
+        uint64_t diff = (x > y) ? x - y : y - x;
+        d = GCD(diff, n);
+    }
+    if (d == n) return 1;
+
+    return d;
+}
 
 
 int main()
@@ -79,9 +106,11 @@ int main()
     if (SolovayStrassen(n)) cout << "yippee\n";
     else cout << "womp womp\n";
 
-    cout << TrialDivision(n);
-
+    cout << TrialDivision(n) << "\n";
+    cout << Pollard_rho_Floyd(n) << "\n";
     return 0;
 }
+
+
 
 
