@@ -16,33 +16,34 @@ uint64_t ModExp(uint64_t b, uint64_t e, uint64_t mod) {
     return x;
 }
 
-bool Miller_Rabin(uint64_t p, int trials){
+
+bool Miller_Rabin(uint64_t p, int trials = 20) {
+    if (p % 2 == 0) return false;
+
     int s = 0;
-    uint64_t d = 0;
-    uint64_t P = p - 1;
-    while (P % 2 == 0){
+    uint64_t d = p - 1;
+    while (d % 2 == 0) { 
+        d >>= 1; 
         s++;
-        d = P >> s;
     }
 
-    for (int i = 0; i < trials; i++){
-        mt19937_64 rng(random_device{}());
-        uint64_t a = rng()%(p - 1);
+    mt19937_64 rng(random_device{}());
+    uniform_int_distribution<uint64_t> dist(2, p - 3);
+
+    for (int i = 0; i < trials; i++) {
+        uint64_t a = dist(rng);
         uint64_t x = ModExp(a, d, p);
         uint64_t y = 0;
-
-        for (int j = 0; j < s; j++){
+        for (int j = 0; j < s; j++) {
             y = ModExp(x, 2, p);
-            if (y == 1 && x != 1 && x != p - 1) return true;
+            if (y == 1 && x != 1 && x != p - 1) return false;
             x = y;
         }
-
-        if (y != 1) return true;
+        if (y != 1) return false;
     }
-
-    return false;
-
+    return true;
 }
+
 
 
 uint64_t TrialDivision(uint64_t n) {
@@ -89,8 +90,8 @@ int main()
 {
     uint64_t n = 1184056490329830239;
 
-    if (Miller_Rabin(n, 20)) cout << "yippee";
-    else cout << "womp womp\n";
+    if (Miller_Rabin(n, 1)) cout << "Prime";
+    else cout << "Composite\n";
 
     cout << TrialDivision(n) << "\n";
     cout << Pollard_rho_Floyd(n, 2) << "\n";
