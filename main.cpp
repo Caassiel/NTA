@@ -16,14 +16,39 @@ uint64_t ModExp(uint64_t b, uint64_t e, uint64_t mod) {
     return x;
 }
 
+int JacobiSymbol(uint64_t a, uint64_t n) {
+    if (a == 0) return 0;
+    int ans = 1;
+    if (a < 0) {
+        a = -a;
+        if (n % 4 == 3) ans = -ans;
+    }
+    if (a == 1) return 1;
+    while (a) {
+        if (a < 0) {
+            a = -a;
+            if (n % 4 == 3) ans = -ans;
+        }
+        while (a % 2 == 0) {
+            a /= 2;
+            if (n % 8 == 3 || n % 8 == 5) ans = -ans;
+        }
+        swap(a, n);
+        if (a % 4 == 3 && n % 4 == 3) ans = -ans;
+        a %= n;
+        if (a > n / 2) a -= n;
+    }
+    return (n == 1) ? ans : 0;
+}
 
-bool Miller_Rabin(uint64_t p, int trials = 20) {
+bool Miller_Rabin(uint64_t p) {
+    int trials = 20;
     if (p % 2 == 0) return false;
 
     int s = 0;
     uint64_t d = p - 1;
-    while (d % 2 == 0) { 
-        d >>= 1; 
+    while (d % 2 == 0) {
+        d >>= 1;
         s++;
     }
 
@@ -43,8 +68,6 @@ bool Miller_Rabin(uint64_t p, int trials = 20) {
     }
     return true;
 }
-
-
 
 uint64_t TrialDivision(uint64_t n) {
 
@@ -86,11 +109,81 @@ uint64_t Pollard_rho_Floyd(uint64_t n, uint64_t c) {
 }
 
 
+// Pomerance
+
+vector<int64_t> FactorBase(uint64_t n, int B) {
+    vector<bool> is_prime(B + 1, true);
+    is_prime[0] = -1;
+    is_prime[1] = is_prime[2] = false;
+
+    for (int i = 3; (long long)i * i <= B; i++){
+        if (is_prime[i]){
+            for (int j = i * i; j <= B; j += i) is_prime[j] = false;
+        }
+    }
+
+    vector<int64_t> fb;
+    for (int p = 2; p <= B; p++){
+        if (is_prime[p] && ModExp(n % p, (p - 1) / 2, p) == 1) fb.push_back(p);
+    }
+
+    return fb;
+}
+
+struct Relation {
+    uint64_t x;
+    vector<int> exponents;
+};
+
+vector<Relation> FindRelations(uint64_t n, const vector<uint64_t>& fb, int M) {
+
+    uint64_t m = (uint64_t)sqrtl((long double)n);
+
+    vector<Relation> relations;
+    for (int i = 0; i < M; i++) {
+        uint64_t a = m + i;
+        uint64_t b = (uint64_t)((__uint128_t)a * a - n);
+
+        vector<int> exps(fb.size(), 0);
+        for (int j = 0; j < (int)fb.size(); j++)
+            while (b % fb[j] == 0) {
+                b /= fb[j];
+                exps[j]++;
+            }
+
+        if (b == 1) relations.push_back({a, move(exps)});
+    }
+    return relations;
+}
+
+
+
+
+
+
+
+
+
+
+void Factorize(uint64_t n, vector<uint64_t>& factors) {
+    if (n == 1) return;
+    if (Miller_Rabin(n)) { factors.push_back(n); return; }
+    uint64_t d = TrialDivision(n);
+    if (d == n) {
+        for (uint64_t c = 1; d == n || d == 1; c++)
+            d = Pollard_rho_Floyd(n, c);
+    }
+    Factorize(d, factors);
+    Factorize(n / d, factors);
+}
+
+
+
 int main()
 {
     uint64_t n = 1184056490329830239;
 
-    if (Miller_Rabin(n, 1)) cout << "Prime";
+    if (Miller_Rabin(n)) cout << "Prime";
     else cout << "Composite\n";
 
     cout << TrialDivision(n) << "\n";
