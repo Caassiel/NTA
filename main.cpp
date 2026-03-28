@@ -16,9 +16,33 @@ uint64_t ModExp(uint64_t b, uint64_t e, uint64_t mod) {
     return x;
 }
 
+bool Miller_Rabin(uint64_t p, int trials){
+    int s = 0;
+    uint64_t d = 0;
+    uint64_t P = p - 1;
+    while (P % 2 == 0){
+        s++;
+        d = P >> s;
+    }
 
-bool Miller_Rabin(uint64_t p, int trials ){}
+    for (int i = 0; i < trials; i++){
+        mt19937_64 rng(random_device{}());
+        uint64_t a = rng()%(p - 1);
+        uint64_t x = ModExp(a, d, p);
+        uint64_t y = 0;
 
+        for (int j = 0; j < s; j++){
+            y = ModExp(x, 2, p);
+            if (y == 1 && x != 1 && x != p - 1) return true;
+            x = y;
+        }
+
+        if (y != 1) return true;
+    }
+
+    return false;
+
+}
 
 
 uint64_t TrialDivision(uint64_t n) {
