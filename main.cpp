@@ -1,62 +1,25 @@
 #include <iostream>
 #include <cmath>
 #include <cstdint>
+#include <random>
+
 using namespace std;
 
 
 uint64_t ModExp(uint64_t b, uint64_t e, uint64_t mod) {
-    uint64_t x = 1, y = b;
-
+    uint64_t x = 1, y = b % mod;
     while (e > 0) {
-        if (e % 2 == 1) {
-            x = (x * y) % mod;
-        }
-        y = (y * y) % mod;
-        e /= 2;
+        if (e & 1) x = (__uint128_t)x * y % mod;
+        y = (__uint128_t)y * y % mod;
+        e >>= 1;
     }
-    return x % mod;
+    return x;
 }
 
-int JacobiSymbol(uint64_t a, uint64_t n) {
-    if (a == 0) return 0;
-    int ans = 1;
 
-    if (a < 0) {
-        a = -a;
-        if (n % 4 == 3) ans = -ans;
-    }
+bool Miller_Rabin(uint64_t p, int trials ){}
 
-    if (a == 1) return 1;
 
-    while (a) {
-        if (a < 0) {
-            a = -a;
-            if (n % 4 == 3) ans = -ans;
-        }
-
-        while (a % 2 == 0) {
-            a /= 2;
-            if (n % 8 == 3 || n % 8 == 5) ans = -ans;
-        }
-
-        swap(a, n);
-
-        if (a % 4 == 3 && n % 4 == 3) ans = -ans;
-        a %= n;
-        if (a > n / 2) a -= n;
-    }
-
-    return (n == 1) ? ans : 0;
-}
-
-bool SolovayStrassen(uint64_t p) {
-    if (p < 2 || (p % 2 == 0 && p != 2)) return false;
-        uint64_t x = rand() % (p - 1) + 1;
-        uint64_t jacobi = (p + JacobiSymbol(x, p)) % p;
-        uint64_t mod = ModExp(x, (p - 1) / 2, p);
-    if (!jacobi || mod != jacobi) return false;
-    return true;
-}
 
 uint64_t TrialDivision(uint64_t n) {
 
@@ -70,8 +33,8 @@ uint64_t TrialDivision(uint64_t n) {
     return d;
 }
 
-uint64_t Polynomial (uint64_t x, uint64_t n){
-    return (x*x + 1) % n;
+uint64_t Polynomial(uint64_t x, uint64_t c, uint64_t n) {
+    return ((__uint128_t)x * x + c) % n;
 }
 
 uint64_t GCD (uint64_t a, uint64_t b){
@@ -83,31 +46,32 @@ uint64_t GCD (uint64_t a, uint64_t b){
     return a;
 }
 
-uint64_t Pollard_rho_Floyd (uint64_t n){
-
-    uint64_t x = 2, y = x;
+uint64_t Pollard_rho_Floyd(uint64_t n, uint64_t c) {
+    if (n % 2 == 0) return 2;
+    mt19937_64 rng(random_device{}());
+    uint64_t x = rng() % (n - 2) + 2;
+    uint64_t y = x;
     uint64_t d = 1;
-
-    while (d == 1){
-        x = Polynomial(x, n);
-        y = Polynomial(Polynomial(y, n), n);
-        uint64_t diff = (x > y) ? x - y : y - x;
-        d = GCD(diff, n);
+    while (d == 1) {
+        x = Polynomial(x, c, n);
+        y = Polynomial(Polynomial(y, c, n), c, n);
+        d = GCD(x > y ? x - y : y - x, n);
     }
-    if (d == n) return 1;
-
-    return d;
+    return (d == n) ? 1 : d;
 }
 
 
 int main()
 {
     uint64_t n = 1184056490329830239;
-    if (SolovayStrassen(n)) cout << "yippee\n";
+
+    if (Miller_Rabin(n, 20)) cout << "yippee";
     else cout << "womp womp\n";
 
     cout << TrialDivision(n) << "\n";
-    cout << Pollard_rho_Floyd(n) << "\n";
+    cout << Pollard_rho_Floyd(n, 2) << "\n";
+
+
     return 0;
 }
 
