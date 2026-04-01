@@ -135,7 +135,93 @@ vector<Relation> FindRelations(uint64_t n, const vector<uint64_t>& fb, int M) {
     return relations;
 }
 
+const int BITSET_SIZE = 2048;
 
+optional<vector<int>> FindDependency(const vector<Relation>& rels, int fb_size) {
+
+    int nr = (int)rels.size();
+    assert(fb_size + nr <= BITSET_SIZE);
+
+    vector<bitset<BITSET_SIZE>> mat(nr);
+    for (int i = 0; i < nr; i++) {
+        for (int j = 0; j < fb_size; j++) mat[i][j] = rels[i].exponents[j] & 1;
+        mat[i][fb_size + i] = 1;
+    }
+
+    int pivot_row = 0;
+
+    for (int col = 0; col < fb_size && pivot_row < nr; col++) {
+        int pivot = -1;
+        for (int row = pivot_row; row < nr; row++)
+            if (mat[row][col]) {
+                pivot = row;
+                break;
+            }
+        if (pivot == -1) continue;
+
+        swap(mat[pivot_row], mat[pivot]);
+
+        for (int row = 0; row < nr; row++) if (row != pivot_row && mat[row][col]) mat[row] ^= mat[pivot_row];
+        pivot_row++;
+    }
+
+    for (int i = 0; i < nr; i++) {
+        bool zero = true;
+        for (int j = 0; j < fb_size; j++)
+            if (mat[i][j]) {
+                zero = false;
+                break;
+            }
+        if (!zero) continue;
+
+        vector<int> idx;
+        for (int j = 0; j < nr; j++) if (mat[i][fb_size + j]) idx.push_back(j);
+        if (!idx.empty()) return idx;
+    }
+
+    return nullopt;
+}
+
+uint64_t ExtractFactor(uint64_t n, const vector<Relation>& rels, const vector<int>& idx, const vector<uint64_t>& fb) {
+    uint64_t x = 1;
+    vector<int> total(fb.size(), 0);
+    for (int i : idx) {
+        x = (__uint128_t)x * rels[i].x % n;
+        for (int j = 0; j < (int)fb.size(); j++) total[j] += rels[i].exponents[j];
+    }
+
+    uint64_t y = 1;
+    for (int j = 0; j < (int)fb.size(); j++)
+        for (int k = 0; k < total[j] / 2; k++)
+            y = (__uint128_t)y * fb[j] % n;
+
+    uint64_t diff = x > y ? x - y : y - x;
+    uint64_t f = GCD(diff, n);
+    return (f == 1 || f == n) ? 0 : f;
+}
+
+uint64_t QuadraticSieve(uint64_t n) {
+    if (n % 2 == 0) return 2;
+
+    double logn = log((double)n);
+    int B = max((int)exp(0.5 * sqrt(logn * log(logn))), 200); // heuristic
+    int M = B * 8;
+    auto fb = FactorBase(n, B);
+    int needed = (int)fb.size() + 20;
+    vector<Relation> relations;
+
+    for (int attempt = 0; (int)relations.size() < needed && attempt < 8; attempt++) {
+        auto batch = FindRelations(n, fb, M);
+        for (auto& r : batch) relations.push_back(move(r));
+        M *= 2;
+    }
+
+    if ((int)relations.size() < needed) return 0;
+    auto dep = FindDependency(relations, (int)fb.size());
+    if (!dep) return 0;
+
+    return ExtractFactor(n, relations, *dep, fb);
+}
 
 void Factorize(uint64_t n, vector<uint64_t>& factors) {
     if (n == 1) return;
