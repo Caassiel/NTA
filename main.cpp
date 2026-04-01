@@ -3,9 +3,14 @@
 #include <cstdint>
 #include <random>
 #include <vector>
+#include <optional>
+#include <assert.h>
+#include <bitset>
+#include <chrono>
+#include <iomanip>
 
 using namespace std;
-
+using namespace chrono;
 
 uint64_t ModExp(uint64_t b, uint64_t e, uint64_t mod) {
     uint64_t x = 1, y = b % mod;
@@ -223,19 +228,98 @@ uint64_t QuadraticSieve(uint64_t n) {
     return ExtractFactor(n, relations, *dep, fb);
 }
 
-void Factorize(uint64_t n, vector<uint64_t>& factors) {
+//програма
+
+struct FactorRecord {
+    uint64_t factor;
+    string   algorithm;
+    double   time_ms;
+};
+
+vector<FactorRecord> g_factors;
+
+template<typename F> auto timed_call(F&& f) {
+    auto t0 = high_resolution_clock::now();
+    auto result = f();
+    double ms = duration<double, nano>(high_resolution_clock::now() - t0).count();
+    return make_pair(result, ms);
+}
+
+void record(uint64_t factor, const string& algo, double ms) {
+    g_factors.push_back({factor, algo, ms});
+    cout << "  >> Factor found: " << factor
+         << "  [" << algo << ", "
+         << fixed << setprecision(3) << ms << " ms]\n";
+}
+
+void step_a(uint64_t n);
+void step_b(uint64_t n);
+void step_c(uint64_t n);
+void step_d(uint64_t n);
+void step_e(uint64_t n);
+
+void step_a(uint64_t n) {
     if (n == 1) return;
-    if (Miller_Rabin(n)) { factors.push_back(n); return; }
-
-    uint64_t d = TrialDivision(n);
-    if (d == n) {
-        d = 1;
-        for (uint64_t c = 1; d == 1 || d == n; c++)
-            d = Pollard_rho_Floyd(n, c);
+    cout << "\n[a] Miller-Rabin test on " << n << "\n";
+    auto [is_prime, ms] = timed_call([&]{ return Miller_Rabin(n); });
+    if (is_prime) {
+        record(n, "Miller-Rabin", ms);
+        return;
     }
+    cout << "    Composite (" << fixed << setprecision(3) << ms << " ms)\n";
+    step_b(n);
+}
 
-    Factorize(d, factors);
-    Factorize(n / d, factors);
+
+void step_b(uint64_t n) {
+    cout << "[b] Trial division on " << n << "\n";
+    auto [a, ms] = timed_call([&]{ return TrialDivision47(n); });
+    if (a != n) {
+        record(a, "Trial Division ", ms);
+        step_a(n / a);
+        return;
+    }
+    cout << "    No factor <= 47 found (" << fixed << setprecision(3) << ms << " ms)\n";
+    step_c(n);
+}
+
+void step_c(uint64_t n) {
+    cout << "[c] Pollard-rho on " << n << "\n";
+    auto [a, ms] = timed_call([&]{ return Pollard_rho_Floyd(n, 1); });
+    if (a != 1 && a != n) {
+        cout << "    Factor " << a << " found (" << fixed << setprecision(3) << ms << " ms)\n";
+        step_a(a);
+        step_d(n / a);
+        return;
+    }
+    cout << "    Pollard-rho failed (" << fixed << setprecision(3) << ms << " ms)\n";
+    step_e(n);
+}
+
+
+void step_d(uint64_t n) {
+    if (n == 1) return;
+    cout << "\n[d] Miller-Rabin test on " << n << "\n";
+    auto [is_prime, ms] = timed_call([&]{ return Miller_Rabin(n); });
+    if (is_prime) {
+        record(n, "Miller-Rabin", ms);
+        return;
+    }
+    cout << "    Composite (" << fixed << setprecision(3) << ms << " ms)\n";
+    step_e(n);
+}
+
+
+void step_e(uint64_t n) {
+    cout << "[e] Quadratic Sieve on " << n << "\n";
+    auto [a, ms] = timed_call([&]{ return QuadraticSieve(n); });
+    if (a != 0 && a != n) {
+        record(a, "Quadratic Sieve", ms);
+        step_d(n / a);
+        return;
+    }
+    cout << "    ERROR: Alg failed to factor" << n
+         << " (" << fixed << setprecision(3) << ms << " ms)\n";
 }
 
 
@@ -243,18 +327,34 @@ void Factorize(uint64_t n, vector<uint64_t>& factors) {
 int main() {
     uint64_t n = 1184056490329830239;
 
-    if (Miller_Rabin(n)) cout << n << " is prime\n";
-    else {
-        cout << n << " is composite\n";
-        vector<uint64_t> factors;
-        Factorize(n, factors);
-        cout << "Factors: ";
-        for (uint64_t f : factors) cout << f << " ";
-        cout << "\n";
+    cout << "\n " << n << "\n";
+    step_a(n);
+
+
+    cout << "\n" << string(60, '=') << "\n";
+    cout << "Result: " << n << " = ";
+    for (int i = 0; i < (int)g_factors.size(); i++) {
+        if (i) cout << " * ";
+        cout << g_factors[i].factor;
     }
+    cout << "\n" << string(60, '=') << "\n\n";
+
+    cout << left
+         << setw(22) << "Factor"
+         << setw(28) << "Algorithm"
+         << "Time (ms)\n";
+    cout << string(60, '-') << "\n";
+    double total_ms = 0;
+    for (auto& r : g_factors) {
+        cout << setw(22) << r.factor
+             << setw(28) << r.algorithm
+             << fixed << setprecision(3) << r.time_ms << "\n";
+        total_ms += r.time_ms;
+    }
+    cout << string(60, '-') << "\n";
+    cout << setw(50) << "Total" << fixed << setprecision(3) << total_ms << " ms\n";
 
     return 0;
 }
-
 
 
