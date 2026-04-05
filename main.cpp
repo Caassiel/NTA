@@ -100,6 +100,39 @@ uint64_t Pollard_rho_Floyd(uint64_t n, uint64_t c) {
 }
 
 //Pomerance
+
+int64_t TonelliShanks(uint64_t n, uint64_t p) {
+    n %= p;
+    if (n == 0) return 0;
+    if (p == 2) return n & 1;
+    if (ModExp(n, (p - 1) / 2, p) != 1) return -1;
+    if (p % 4 == 3) return (int64_t)ModExp(n, (p + 1) / 4, p);
+
+    uint64_t S = 0, Q = p - 1;
+    while (Q % 2 == 0) { Q >>= 1; S++; }
+
+    uint64_t z = 2;
+    while (ModExp(z, (p - 1) / 2, p) != p - 1) z++;
+
+    uint64_t M = S;
+    uint64_t c = ModExp(z, Q, p);
+    uint64_t t = ModExp(n, Q, p);
+    uint64_t R = ModExp(n, (Q + 1) / 2, p);
+
+    for (;;) {
+        if (t == 1) return (int64_t)R;
+        uint64_t i = 1;
+        uint64_t tmp = (__uint128_t)t * t % p;
+        while (tmp != 1) { tmp = (__uint128_t)tmp * tmp % p; i++; }
+        uint64_t b = c;
+        for (uint64_t j = 0; j < M - i - 1; j++) b = (__uint128_t)b * b % p;
+        M = i;
+        c = (__uint128_t)b * b % p;
+        t = (__uint128_t)t * c % p;
+        R = (__uint128_t)R * b % p;
+    }
+}
+
 vector<uint64_t> FactorBase(uint64_t n, int B) {
 
     vector<bool> is_prime(B + 1, true);
@@ -121,6 +154,46 @@ struct Relation {
     vector<int> exponents;
 };
 
+vector<Relation> Sieve(uint64_t n, const vector<uint64_t>& fb, int M) {
+    uint64_t sqrtn = (uint64_t)sqrtl((long double)n);
+    while ((__uint128_t)(sqrtn + 1) * (sqrtn + 1) <= n) sqrtn++;
+    while ((__uint128_t)sqrtn * sqrtn > n) sqrtn--;
+    sqrtn++;
+
+    int sz = 2 * M;
+    vector<float> logs(sz, 0.0f);
+
+    for (uint64_t p : fb) {
+        uint64_t r = TonelliShanks(n%p, p);
+        if (r < 0) continue;
+
+        for (int64_t root : {r, (int64_t)p - r}) {
+            int64_t start = ((root - (int64_t)(sqrtn % p)) % (int64_t)p + (int64_t)p) % (int64_t)p;
+            float logp = log2f((float)p);
+            for (int64_t i = start; i < sz; i += (int64_t)p)
+                logs[i] += logp;
+        }
+    }
+
+    float threshold = log2f((float)n) * 0.5f + log2f((float)M) - 1.5f;
+
+    vector<Relation> relations;
+    for (int i = 0; i < sz; i++) {
+        if (logs[i] < threshold) continue;
+
+        uint64_t xi = sqrtn + (uint64_t)i;
+        uint64_t rem = (uint64_t)((__uint128_t)xi * xi - (__uint128_t)n);
+
+
+        vector<int> exps(fb.size(), 0);
+        for (int j = 0; j < (int)fb.size(); j++)
+            while (rem % fb[j] == 0) { rem /= fb[j]; exps[j]++; }
+
+        if (rem == 1)
+            relations.push_back({xi, move(exps)});
+    }
+    return relations;
+}
 vector<Relation> FindRelations(uint64_t n, const vector<uint64_t>& fb, int M) {
     uint64_t m = (uint64_t)sqrtl((long double)n);
     while ((__uint128_t)m * m > n) m--;
@@ -143,48 +216,44 @@ vector<Relation> FindRelations(uint64_t n, const vector<uint64_t>& fb, int M) {
 
 const int BITSET_SIZE = 2048;
 
-optional<vector<int>> FindDependency(const vector<Relation>& rels, int fb_size) {
+vector<vector<int>> FindAllDependencies(const vector<Relation>& rels, int fb_size) {
     int nr = (int)rels.size();
     assert(fb_size + nr <= BITSET_SIZE);
 
     vector<bitset<BITSET_SIZE>> mat(nr);
     for (int i = 0; i < nr; i++) {
-        for (int j = 0; j < fb_size; j++) mat[i][j] = rels[i].exponents[j] & 1;
+        for (int j = 0; j < fb_size; j++)
+            mat[i][j] = rels[i].exponents[j] & 1;
         mat[i][fb_size + i] = 1;
     }
 
     int pivot_row = 0;
-
     for (int col = 0; col < fb_size && pivot_row < nr; col++) {
         int pivot = -1;
         for (int row = pivot_row; row < nr; row++)
-            if (mat[row][col]) {
-                pivot = row;
-                break;
-            }
+            if (mat[row][col]) { pivot = row; break; }
         if (pivot == -1) continue;
 
         swap(mat[pivot_row], mat[pivot]);
-
-        for (int row = 0; row < nr; row++) if (row != pivot_row && mat[row][col]) mat[row] ^= mat[pivot_row];
+        for (int row = 0; row < nr; row++)
+            if (row != pivot_row && mat[row][col])
+                mat[row] ^= mat[pivot_row];
         pivot_row++;
     }
 
+    vector<vector<int>> all_deps;
     for (int i = 0; i < nr; i++) {
         bool zero = true;
         for (int j = 0; j < fb_size; j++)
-            if (mat[i][j]) {
-                zero = false;
-                break;
-            }
+            if (mat[i][j]) { zero = false; break; }
         if (!zero) continue;
 
         vector<int> idx;
-        for (int j = 0; j < nr; j++) if (mat[i][fb_size + j]) idx.push_back(j);
-        if (!idx.empty()) return idx;
+        for (int j = 0; j < nr; j++)
+            if (mat[i][fb_size + j]) idx.push_back(j);
+        if (!idx.empty()) all_deps.push_back(idx);
     }
-
-    return nullopt;
+    return all_deps;
 }
 
 uint64_t ExtractFactor(uint64_t n, const vector<Relation>& rels, const vector<int>& idx, const vector<uint64_t>& fb) {
@@ -207,10 +276,12 @@ uint64_t ExtractFactor(uint64_t n, const vector<Relation>& rels, const vector<in
 
 uint64_t QuadraticSieve(uint64_t n) {
     if (n % 2 == 0) return 2;
+    for (uint64_t p : {3ULL,5ULL,7ULL,11ULL,13ULL,17ULL,19ULL,23ULL,29ULL,31ULL,37ULL,41ULL,43ULL,47ULL})
+        if (n % p == 0) return p;
 
     double logn = log((double)n);
-    int B = max((int)exp(0.5 * sqrt(logn * log(logn))), 200); // heuristic
-    int M = B * 8;
+    int B = max((int)exp(0.56 * sqrt(logn * log(logn))), 1000); //improved heuristic
+    int M = B * 25;
     auto fb = FactorBase(n, B);
     int needed = (int)fb.size() + 20;
     vector<Relation> relations;
@@ -222,12 +293,13 @@ uint64_t QuadraticSieve(uint64_t n) {
     }
 
     if ((int)relations.size() < needed) return 0;
-    auto dep = FindDependency(relations, (int)fb.size());
-    if (!dep) return 0;
-    cout << "Relations found: " << relations.size()
-     << " / " << needed << " needed\n";
 
-    return ExtractFactor(n, relations, *dep, fb);
+    auto all_deps = FindAllDependencies(relations, (int)fb.size());
+        for (auto& dep : all_deps) {
+            uint64_t f = ExtractFactor(n, relations, dep, fb);
+            if (f != 0) return f;
+        }
+    return 0;
 }
 
 //програма
@@ -253,30 +325,29 @@ void record(uint64_t factor, const string& algo, double ms) {
          << fixed << setprecision(3) << ms << " ms]\n";
 }
 
-void step_a(uint64_t n);
+void step_a(uint64_t n, const string& found_by = "Miller-Rabin");
 void step_b(uint64_t n);
 void step_c(uint64_t n);
-void step_d(uint64_t n);
+void step_d(uint64_t n, const string& found_by = "Miller-Rabin");
 void step_e(uint64_t n);
 
-void step_a(uint64_t n) {
+void step_a(uint64_t n, const string& found_by) {
     if (n == 1) return;
     cout << "\n[a] Miller-Rabin test on " << n << "\n";
     auto [is_prime, ms] = timed_call([&]{ return Miller_Rabin(n); });
     if (is_prime) {
-        record(n, "Miller-Rabin", ms);
+        record(n, found_by, ms);
         return;
     }
     cout << "    Composite (" << fixed << setprecision(3) << ms << " ms)\n";
     step_b(n);
 }
 
-
 void step_b(uint64_t n) {
-    cout << "[b] Trial division on " << n << "\n";
+    cout << "[b] Trial division (<=47) on " << n << "\n";
     auto [a, ms] = timed_call([&]{ return TrialDivision47(n); });
     if (a != n) {
-        record(a, "Trial Division ", ms);
+        record(a, "Trial Division", ms);
         step_a(n / a);
         return;
     }
@@ -295,21 +366,20 @@ void step_c(uint64_t n) {
     });
     if (a != 1 && a != n) {
         cout << "    Factor " << a << " found (" << fixed << setprecision(3) << ms << " ms)\n";
-        step_a(a);
-        step_d(n / a);
+        step_a(a, "Pollard-rho");
+        step_d(n / a, "Pollard-rho");
         return;
     }
     cout << "    Pollard-rho failed (" << fixed << setprecision(3) << ms << " ms)\n";
     step_e(n);
 }
 
-
-void step_d(uint64_t n) {
+void step_d(uint64_t n, const string& found_by) {
     if (n == 1) return;
     cout << "\n[d] Miller-Rabin test on " << n << "\n";
     auto [is_prime, ms] = timed_call([&]{ return Miller_Rabin(n); });
     if (is_prime) {
-        record(n, "Miller-Rabin", ms);
+        record(n, found_by, ms);
         return;
     }
     cout << "    Composite (" << fixed << setprecision(3) << ms << " ms)\n";
@@ -321,19 +391,15 @@ void step_e(uint64_t n) {
     auto [a, ms] = timed_call([&]{ return QuadraticSieve(n); });
     if (a != 0 && a != n) {
         record(a, "Quadratic Sieve", ms);
-        step_d(n / a);
+        step_d(n / a, "Quadratic Sieve");
         return;
     }
-    cout << "    ERROR: Alg failed to factor" << n
+    cout << "    ERROR: failed to factor " << n
          << " (" << fixed << setprecision(3) << ms << " ms)\n";
 }
 
-
-
 int main() {
-    uint64_t n = 1184056490329830239;
-
-    vector<int64_t> array2 = {
+    vector<int64_t> array1 = {
         3009182572376191,
         1021514194991569,
         4000852962116741,
@@ -346,35 +412,54 @@ int main() {
         2485021628404193
     };
 
-    for (uint64_t m : array2){
-        cout << "Pollard-rho: " << Pollard_rho_Floyd(m, 1) << "\n";
-        cout << "Quad Sieve:  " << QuadraticSieve(m) << "\n\n";
+    vector<int64_t> array2 = {
+        901667173167834173,
+        323324583518541583,
+        2500744714570633849,
+        691534156424661573,
+        1184056490329830239,
+        1449863225586482579,
+        778320232076288167,
+        1515475730401555091,
+        341012868237902669,
+        7442109405582674149
+    };
+
+    for (uint64_t m : array1) {
+        auto [a, ms1] = timed_call([&]{ return Pollard_rho_Floyd(m, 1); });
+        auto [b, ms2] = timed_call([&]{ return QuadraticSieve(m); });
+
+        cout << "n = " << m << "\n";
+        cout << "  Pollard-rho:    " << a << "  (" << fixed << setprecision(3) << ms1 << " ms)\n";
+        cout << "  Quadratic Sieve:" << b << "  (" << fixed << setprecision(3) << ms2 << " ms)\n\n";
     }
 
-    cout << "\n " << n << "\n";
-    step_a(n);
+        uint64_t n = 901667173167834173;
+        cout << "\n " << n << "\n";
+        step_a(n);
 
-    cout << "Result: " << n << " = ";
-    for (int i = 0; i < (int)g_factors.size(); i++) {
-        if (i) cout << " * ";
-        cout << g_factors[i].factor;
-    }
-    cout << "\n\n";
+        cout << "Result: " << n << " = ";
+        for (int i = 0; i < (int)g_factors.size(); i++) {
+            if (i) cout << " * ";
+            cout << g_factors[i].factor;
+        }
+        cout << "\n\n";
 
-    cout << left
-         << setw(22) << "Factor"
-         << setw(28) << "Algorithm"
-         << "Time (ms)\n";
+        cout << left
+             << setw(22) << "Factor"
+             << setw(28) << "Algorithm"
+             << "Time (ms)\n";
 
-    double total_ms = 0;
-    for (auto& r : g_factors) {
-        cout << setw(22) << r.factor
-             << setw(28) << r.algorithm
-             << fixed << setprecision(3) << r.time_ms << "\n";
-        total_ms += r.time_ms;
-    }
-    cout << "\n";
-    cout << setw(50) << "Total" << fixed << setprecision(3) << total_ms << " ms\n";
+        double total_ms = 0;
+        for (auto& r : g_factors) {
+            cout << setw(22) << r.factor
+                 << setw(28) << r.algorithm
+                 << fixed << setprecision(3) << r.time_ms << "\n";
+            total_ms += r.time_ms;
+        }
+        cout << "\n";
+        cout << setw(50) << "Total" << fixed << setprecision(3) << total_ms << " ms\n";
+
 
     return 0;
 }
