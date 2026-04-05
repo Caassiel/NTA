@@ -31,7 +31,7 @@ uint64_t GCD(uint64_t a, uint64_t b) {
     return a;
 }
 
-
+//Primality test
 bool Miller_Rabin(uint64_t p, int trials = 20) {
     if (p < 2) return false;
     if (p == 2 || p == 3) return true;
@@ -61,6 +61,7 @@ bool Miller_Rabin(uint64_t p, int trials = 20) {
     return true;
 }
 
+//Trial division
 uint64_t TrialDivision(uint64_t n) {
     if (n % 2 == 0) return 2;
     uint64_t N = (uint64_t)sqrtl((long double)n);
@@ -79,7 +80,7 @@ uint64_t TrialDivision47(uint64_t n) {
     return n;
 }
 
-
+//Pollard-rho
 uint64_t Polynomial(uint64_t x, uint64_t c, uint64_t n) {
     return ((__uint128_t)x * x + c) % n;
 }
@@ -99,8 +100,8 @@ uint64_t Pollard_rho_Floyd(uint64_t n, uint64_t c) {
 }
 
 //Pomerance
-
 vector<uint64_t> FactorBase(uint64_t n, int B) {
+
     vector<bool> is_prime(B + 1, true);
     is_prime[0] = is_prime[1] = false;
     for (int i = 2; (long long)i * i <= B; i++)
@@ -143,7 +144,6 @@ vector<Relation> FindRelations(uint64_t n, const vector<uint64_t>& fb, int M) {
 const int BITSET_SIZE = 2048;
 
 optional<vector<int>> FindDependency(const vector<Relation>& rels, int fb_size) {
-
     int nr = (int)rels.size();
     assert(fb_size + nr <= BITSET_SIZE);
 
@@ -224,12 +224,13 @@ uint64_t QuadraticSieve(uint64_t n) {
     if ((int)relations.size() < needed) return 0;
     auto dep = FindDependency(relations, (int)fb.size());
     if (!dep) return 0;
+    cout << "Relations found: " << relations.size()
+     << " / " << needed << " needed\n";
 
     return ExtractFactor(n, relations, *dep, fb);
 }
 
 //програма
-
 struct FactorRecord {
     uint64_t factor;
     string   algorithm;
@@ -241,7 +242,7 @@ vector<FactorRecord> g_factors;
 template<typename F> auto timed_call(F&& f) {
     auto t0 = high_resolution_clock::now();
     auto result = f();
-    double ms = duration<double, nano>(high_resolution_clock::now() - t0).count();
+    double ms = duration<double, milli>(high_resolution_clock::now() - t0).count();
     return make_pair(result, ms);
 }
 
@@ -285,7 +286,13 @@ void step_b(uint64_t n) {
 
 void step_c(uint64_t n) {
     cout << "[c] Pollard-rho on " << n << "\n";
-    auto [a, ms] = timed_call([&]{ return Pollard_rho_Floyd(n, 1); });
+    auto [a, ms] = timed_call([&]{
+        for (uint64_t c = 1; c <= 20; c++) {
+            uint64_t d = Pollard_rho_Floyd(n, c);
+            if (d != 1 && d != n) return d;
+        }
+        return (uint64_t)1;
+    });
     if (a != 1 && a != n) {
         cout << "    Factor " << a << " found (" << fixed << setprecision(3) << ms << " ms)\n";
         step_a(a);
@@ -306,9 +313,8 @@ void step_d(uint64_t n) {
         return;
     }
     cout << "    Composite (" << fixed << setprecision(3) << ms << " ms)\n";
-    step_e(n);
+    step_c(n);
 }
-
 
 void step_e(uint64_t n) {
     cout << "[e] Quadratic Sieve on " << n << "\n";
@@ -327,23 +333,39 @@ void step_e(uint64_t n) {
 int main() {
     uint64_t n = 1184056490329830239;
 
+    vector<int64_t> array2 = {
+        3009182572376191,
+        1021514194991569,
+        4000852962116741,
+        15196946347083,
+        499664789704823,
+        269322119833303,
+        679321846483919,
+        96267366284849,
+        61333127792637,
+        2485021628404193
+    };
+
+    for (uint64_t m : array2){
+        cout << "Pollard-rho: " << Pollard_rho_Floyd(m, 1) << "\n";
+        cout << "Quad Sieve:  " << QuadraticSieve(m) << "\n\n";
+    }
+
     cout << "\n " << n << "\n";
     step_a(n);
 
-
-    cout << "\n" << string(60, '=') << "\n";
     cout << "Result: " << n << " = ";
     for (int i = 0; i < (int)g_factors.size(); i++) {
         if (i) cout << " * ";
         cout << g_factors[i].factor;
     }
-    cout << "\n" << string(60, '=') << "\n\n";
+    cout << "\n\n";
 
     cout << left
          << setw(22) << "Factor"
          << setw(28) << "Algorithm"
          << "Time (ms)\n";
-    cout << string(60, '-') << "\n";
+
     double total_ms = 0;
     for (auto& r : g_factors) {
         cout << setw(22) << r.factor
@@ -351,10 +373,11 @@ int main() {
              << fixed << setprecision(3) << r.time_ms << "\n";
         total_ms += r.time_ms;
     }
-    cout << string(60, '-') << "\n";
+    cout << "\n";
     cout << setw(50) << "Total" << fixed << setprecision(3) << total_ms << " ms\n";
 
     return 0;
 }
+
 
 
