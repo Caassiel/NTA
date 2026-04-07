@@ -51,7 +51,7 @@ bool Miller_Rabin(const mpz_class& p, int trials = 20) {
     while (d % 2 == 0) { d >>= 1; s++; }
 
     for (int i = 0; i < trials; i++) {
-        mpz_class a = rng().get_z_range(p - 4) + 2; // [2, p-3]
+        mpz_class a = rng().get_z_range(p - 4) + 2;
         mpz_class x = ModExp(a, d, p);
         mpz_class y = 0;
         for (int j = 0; j < s; j++) {
@@ -92,7 +92,6 @@ mpz_class Pollard_rho_Floyd(const mpz_class& n, const mpz_class& c) {
     return (d == n) ? mpz_class(1) : d;
 }
 
-
 //Pomerance
 int64_t TonelliShanks(uint64_t n, uint64_t p) {
     n %= p;
@@ -125,7 +124,6 @@ int64_t TonelliShanks(uint64_t n, uint64_t p) {
         R = (__uint128_t)R * b % p;
     }
 }
-
 
 vector<uint64_t> FactorBase(const mpz_class& n, int B) {
     vector<bool> is_prime(B + 1, true);
@@ -195,7 +193,7 @@ vector<Relation> Sieve(const mpz_class& n, const vector<uint64_t>& fb, int M) {
     return relations;
 }
 
-const int BITSET_SIZE = 8192;
+const int BITSET_SIZE = 65536;
 
 vector<vector<int>> FindAllDependencies(const vector<Relation>& rels, int fb_size) {
     int nr = (int)rels.size();
@@ -263,7 +261,7 @@ mpz_class QuadraticSieve(const mpz_class& n) {
         if (n % p == 0) return mpz_class(p);
 
     double logn = (double)mpz_sizeinbase(n.get_mpz_t(), 2) * log(2.0);
-    int B = max((int)exp(0.56 * sqrt(logn * log(logn))), 1000);
+    int B = max((int)exp(0.56 /*0,7*/ * sqrt(logn * log(logn))), 1000);
     int M = B * 25;
 
     auto fb     = FactorBase(n, B);
@@ -272,7 +270,10 @@ mpz_class QuadraticSieve(const mpz_class& n) {
     vector<Relation> relations;
     for (int attempt = 0; (int)relations.size() < needed && attempt < 15; attempt++) {
         auto batch = Sieve(n, fb, M);
-        for (auto& r : batch) relations.push_back(move(r));
+        for (auto& r : batch) {
+            //if  ((int)relations.size() >= needed) break;
+            relations.push_back(move(r));
+        }
         M *= 2;
     }
 
@@ -340,7 +341,7 @@ void step_b(const mpz_class& n) {
 void step_c(const mpz_class& n) {
     cout << "[c] Pollard-rho on " << n << "\n";
     auto [a, ms] = timed_call([&]{
-        for (long c = 1; c <= 20; c++) {
+        for (long c = 1; c <= 2; c++) {
             mpz_class d = Pollard_rho_Floyd(n, mpz_class(c));
             if (d != 1 && d != n) return d;
         }
@@ -362,7 +363,7 @@ void step_d(const mpz_class& n, const string& found_by) {
     auto [is_prime, ms] = timed_call([&]{ return Miller_Rabin(n); });
     if (is_prime) { record(n, found_by, ms); return; }
     cout << "    Composite (" << fixed << setprecision(3) << ms << " ms)\n";
-    step_c(n);
+    step_e(n);
 }
 
 void step_e(const mpz_class& n) {
@@ -468,6 +469,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
 
 
 
