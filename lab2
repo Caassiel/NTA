@@ -2,7 +2,9 @@
 #include <gmpxx.h>
 #include <map>
 #include <vector>
+#include <chrono>
 using namespace std;
+using namespace chrono;
 
 class Group {
 public:
@@ -179,17 +181,38 @@ int main() {
     cin >> G.a;
     cout << "Enter b: ";
     cin >> b;
-/*
-    mpz_class log_bf  = G.Discrete_Log_Brute_Force(b);
-    cout << "Brute force:  " << G.a << "^" << log_bf  << " = " << b << " (mod " << G.p << ")\n";
-    cout << "BF  verify: " << G.ModExp64(G.a, log_bf,  G.p) << "\n";
-*/
+
+    auto start2 = high_resolution_clock::now();
     mpz_class log_sph = G.Silver_Pohlig_Hellman(b);
+    auto end2 = high_resolution_clock::now();
+    auto duration2 = duration_cast<microseconds>(end2 - start2);
     cout << "Silver-Pohlig-Hellman: " << G.a << "^" << log_sph << " = " << b << " (mod " << G.p << ")\n";
     cout << "SPH verify: " << G.ModExp64(G.a, log_sph, p) << "\n";
+    cout << "SPH time: " << duration2.count() << " microseconds\n";
+
+    auto start1 = high_resolution_clock::now();
+    mpz_class log_bf  = G.Discrete_Log_Brute_Force(b);
+    auto end1 = high_resolution_clock::now();
+    auto duration1 = duration_cast<microseconds>(end1 - start1);
+    cout << "Brute force:  " << G.a << "^" << log_bf  << " = " << b << " (mod " << G.p << ")\n";
+    cout << "BF  verify: " << G.ModExp64(G.a, log_bf,  p) << "\n";
+    cout << "Brute force time: " << duration1.count() << " microseconds\n\n";
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
