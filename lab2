@@ -28,13 +28,14 @@ public:
     }
 
     uint64_t Discrete_Log_Brute_Force(uint64_t b){
-        uint64_t result;
-        for (uint64_t i = 0; i < p - 1; i++) {
-            result = ModExp64(a, i, p);
-            if (result == b) return result;
-        }
-
-        return 0;
+        uint64_t result = 0;
+        for (uint64_t i = 0; i < p - 1; i++){
+            if (ModExp64(a, i, p) == b) {
+                result = i;
+                break;
+                }
+            }
+        return result;
     }
 
 
@@ -42,7 +43,14 @@ public:
 
 int main()
 {
+    Group G(73);
+
+    uint64_t Log = G.Discrete_Log_Brute_Force(20);
+    cout << Log;
+
 
     return 0;
 }
+
+
 
