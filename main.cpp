@@ -1,0 +1,48 @@
+#include <iostream>
+#include <cstdint>
+#include <random>
+using namespace std;
+
+class Group {
+private:
+    uint64_t p;
+    uint64_t a; //generator
+
+public:
+
+    Group(uint64_t p) : p(p) {
+        random_device rd;
+        mt19937_64 gen(rd());
+        uniform_int_distribution<uint64_t> dist(1, p - 1);
+        a = dist(gen);
+    }
+
+    uint64_t ModExp64(uint64_t b, uint64_t e, uint64_t mod) {
+        uint64_t x = 1, y = b % mod;
+        while (e > 0) {
+            if (e & 1) x = (__uint128_t)x * y % mod;
+            y = (__uint128_t)y * y % mod;
+            e >>= 1;
+        }
+        return x;
+    }
+
+    uint64_t Discrete_Log_Brute_Force(uint64_t b){
+        uint64_t result;
+        for (uint64_t i = 0; i < p - 1; i++) {
+            result = ModExp64(a, i, p);
+            if (result == b) return result;
+        }
+
+        return 0;
+    }
+
+
+};
+
+int main()
+{
+
+    return 0;
+}
+
