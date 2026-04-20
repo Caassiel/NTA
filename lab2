@@ -1,203 +1,126 @@
 #include <iostream>
-#include <cstdint>
-#include <random>
+#include <gmpxx.h>
 #include <map>
+#include <vector>
 using namespace std;
 
 class Group {
 public:
-    uint64_t p;
-    uint64_t a; //generator
+    mpz_class p;
+    mpz_class a;
 
-    uint64_t ModExp64(uint64_t b, uint64_t e, uint64_t mod) {
-        uint64_t x = 1, y = b % mod;
+    gmp_randclass rng = gmp_randclass(gmp_randinit_mt);
+
+    Group(mpz_class p) : p(p) {
+        rng.seed(time(nullptr));
+    }
+
+    mpz_class ModExp64(mpz_class b, mpz_class e, mpz_class mod) {
+        mpz_class x = 1;
+        b %= mod;
+
         while (e > 0) {
-            if (e & 1) x = (__uint128_t)x * y % mod;
-            y = (__uint128_t)y * y % mod;
+            if (mpz_odd_p(e.get_mpz_t()))
+                x = (x * b) % mod;
+
+            b = (b * b) % mod;
             e >>= 1;
         }
         return x;
     }
 
-    uint64_t IntPow(uint64_t b, uint64_t e) {
-        uint64_t x = 1;
-        while (e > 0) {
-            if (e & 1) x *= b;
-            b *= b;
-            e >>= 1;
-        }
-        return x;
-    }
+    mpz_class Discrete_Log_Brute_Force(mpz_class b) {
+        mpz_class cur = 1;
 
-    bool IsGenerator(uint64_t g) {
-        uint64_t phi = p - 1;
-        uint64_t temp = phi;
-
-        for (uint64_t q = 2; q * q <= temp; q++) {
-            if (temp % q == 0) {
-                if (ModExp64(g, phi / q, p) == 1)
-                    return false;
-                while (temp % q == 0)
-                    temp /= q;
-            }
-        }
-
-        if (temp > 1) {
-            if (ModExp64(g, phi / temp, p) == 1)
-                return false;
-        }
-
-        return true;
-    }
-
-    void Find_Generator(){
-        for (uint64_t i = 1; i < p - 1; i++){
-            if (IsGenerator(i)){
-                a = i;
-                break;
-            }
-        }
-    }
-
-    Group(uint64_t p) : p(p) { Find_Generator(); }
-
-    int64_t Discrete_Log_Brute_Force(uint64_t b){
-        uint64_t cur = 1;
-
-        for (uint64_t i = 0; i < p - 1; i++){
-            if (cur == b)
-                return i;
-
-            cur = (__uint128_t)cur * a % p;
+        for (mpz_class i = 0; i < p - 1; i++) {
+            if (cur == b) return i;
+            cur = (cur * a) % p;
         }
 
         return -1;
     }
 
-    //SPH
-    int64_t gcdExtended(int64_t a, int64_t b, int64_t &x, int64_t &y) {
-        if (a == 0) { x = 0; y = 1; return b; }
-        int64_t x1, y1;
-        int64_t gcd = gcdExtended(b % a, a, x1, y1);
-        x = y1 - (b / a) * x1;
-        y = x1;
-        return gcd;
+    mpz_class mod_inverse(mpz_class a, mpz_class m) {
+        mpz_class x, y, gcd;
+
+        mpz_gcdext(gcd.get_mpz_t(),
+                   x.get_mpz_t(),
+                   y.get_mpz_t(),
+                   a.get_mpz_t(),
+                   m.get_mpz_t());
+
+        x %= m;
+        if (x < 0) x += m;
+        return x;
     }
 
-    uint64_t GCD(uint64_t a, uint64_t b) {
-        while (b) { a %= b; swap(a, b); }
-        return a;
+    mpz_class Polynomial(mpz_class x, mpz_class c, mpz_class n) {
+        return (x * x + c) % n;
     }
 
-    uint64_t mod_inverse(uint64_t a, uint64_t m) {
-        int64_t x, y;
-        gcdExtended((int64_t)a, (int64_t)m, x, y);
-        return (uint64_t)((x % (int64_t)m + (int64_t)m) % (int64_t)m);
-    }
-
-    uint64_t Polynomial(const uint64_t& x, uint64_t c, const uint64_t& n) {
-        return ((__uint128_t)x * x + c) % n;
-    }
-
-    uint64_t TrialDivision47(uint64_t n) {
-        static const uint64_t small_primes[] = {
-            2,3,5,7,11,13,17,19,23,29,31,37,41,43,47
-        };
-        for (uint64_t p : small_primes)
-            if (n % p == 0) return p;
-        return n;
-    }
-
-    uint64_t Pollard_rho_Floyd(const uint64_t& n, uint64_t c) {
+    mpz_class Pollard_rho_Floyd(mpz_class n, mpz_class c) {
         if (n % 2 == 0) return 2;
-        mt19937_64 rng(random_device{}());
-        uniform_int_distribution<uint64_t> dist(2, n - 2);
 
-        while (true) {
-            uint64_t x = dist(rng);
-            uint64_t y = x;
-            uint64_t d = 1;
+        mpz_class x = rng.get_z_range(n);
+        mpz_class y = x;
+        mpz_class d = 1;
 
-            while (d == 1) {
-                x = Polynomial(x, c, n);
-                y = Polynomial(Polynomial(y, c, n), c, n);
-                uint64_t diff = x > y ? x - y : y - x;
-                d = GCD(diff, n);
-            }
+        while (d == 1) {
+            x = Polynomial(x, c, n);
+            y = Polynomial(Polynomial(y, c, n), c, n);
 
-            if (d != n) return d;
+            mpz_class diff = (x > y ? x - y : y - x);
+            d = gcd(diff, n);
         }
+
+        if (d == n) return 1;
+        return d;
     }
 
-    bool Miller_Rabin(uint64_t p) {
-        int trials = 20;
-        if (p < 2) return false;
-        if (p == 2 || p == 3) return true;
-        if (p % 2 == 0) return false;
-        int s = 0;
-        uint64_t d = p - 1;
-
-        while (d % 2 == 0) {
-            d >>= 1;
-            s++;
-        }
-
-        mt19937_64 rng(random_device{}());
-        uniform_int_distribution<uint64_t> dist(2, p - 3);
-
-        for (int i = 0; i < trials; i++) {
-        uint64_t a = dist(rng);
-        uint64_t x = ModExp64(a, d, p);
-        uint64_t y = 0;
-        for (int j = 0; j < s; j++) {
-            y = ModExp64(x, 2, p);
-            if (y == 1 && x != 1 && x != p - 1) return false;
-            x = y;
-            }
-            if (y != 1) return false;
-        }
-        return true;
-    }
-
-    void Factorize(uint64_t n, map<uint64_t, uint64_t>& factors) {
+    void Factorize(mpz_class n, map<mpz_class, mpz_class>& factors) {
         if (n == 1) return;
-        if (Miller_Rabin(n)) { factors[n]++; return; }
 
-        uint64_t d = TrialDivision47(n);
-        if (d == n) {
-            for (uint64_t c = 1; d == n || d == 1; c++)
-                d = Pollard_rho_Floyd(n, c);
+        if (mpz_probab_prime_p(n.get_mpz_t(), 20)) {
+            factors[n]++;
+            return;
         }
+
+        mpz_class d = 1;
+
+        while (d == 1 || d == n) {
+            mpz_class c = rng.get_z_range(n);
+            d = Pollard_rho_Floyd(n, c);
+        }
+
         Factorize(d, factors);
         Factorize(n / d, factors);
     }
 
-    uint64_t SolvePrimePower(uint64_t q, uint64_t e, uint64_t b) {
-        uint64_t n = p - 1;
-        uint64_t x = 0;
+    mpz_class SolvePrimePower(mpz_class q, mpz_class e, mpz_class b) {
+        mpz_class n = p - 1;
+        mpz_class x = 0;
+        mpz_class q_k = 1;
 
-        uint64_t q_k = 1;
+        mpz_class g_k = ModExp64(a, n / q, p);
 
-        for (uint64_t k = 0; k < e; k++) {
+        for (mpz_class k = 0; k < e; k++) {
 
-            uint64_t exp = n / (q_k * q);
+            mpz_class exp = n / (q_k * q);
 
-            uint64_t a_inv = ModExp64(ModExp64(a, x, p), p-2, p);
-            uint64_t b_k   = (__uint128_t)b * a_inv % p;
+            mpz_class a_inv_x = ModExp64(a, (n - x % n) % n, p);
+            mpz_class inner = (b * a_inv_x) % p;
 
-            uint64_t h_k = ModExp64(b_k, exp, p);
+            mpz_class h_k = ModExp64(inner, exp, p);
 
-            vector<uint64_t> table(q);
-            table[0] = 1;
-            for (uint64_t j = 1; j < q; j++)
-                table[j] = ModExp64(a, n * j / q, p);
+            mpz_class cur = 1;
+            mpz_class x_k = 0;
 
-            uint64_t x_k = 0;
-            for (uint64_t j = 0; j < q; j++) {
-                if (table[j] == h_k) {
+            for (mpz_class j = 0; j < q; j++) {
+                if (cur == h_k) {
                     x_k = j;
                     break;
                 }
+                cur = (cur * g_k) % p;
             }
 
             x += x_k * q_k;
@@ -207,64 +130,79 @@ public:
         return x % q_k;
     }
 
-    uint64_t CRT(const vector<uint64_t>& r, const vector<uint64_t>& m) {
-        __uint128_t res = 0;
-        __uint128_t M = 1;
-        for (auto x : m) M *= x;
+    mpz_class CRT(vector<mpz_class> res, vector<mpz_class> mod) {
 
-        for (size_t i = 0; i < m.size(); i++) {
-            __uint128_t Mi = M / m[i];
-            uint64_t inv = mod_inverse(Mi % m[i], m[i]);
-            res += (__uint128_t)r[i] * Mi % M * inv;
+        mpz_class M = 1;
+        for (auto &x : mod) M *= x;
+
+        mpz_class result = 0;
+
+        for (size_t i = 0; i < mod.size(); i++) {
+            mpz_class Mi = M / mod[i];
+            mpz_class inv = mod_inverse(Mi % mod[i], mod[i]);
+            result += (res[i] * Mi % M) * inv;
         }
 
-        return (uint64_t)(res % M);
+        return result % M;
     }
 
+     mpz_class Silver_Pohlig_Hellman(mpz_class b) {
+        mpz_class n = p - 1;
 
-    uint64_t Silver_Pohlig_Hellman(uint64_t b){
-        uint64_t n = p - 1;
-
-        map<uint64_t, uint64_t> factors;
+        map<mpz_class, mpz_class> factors;
         Factorize(n, factors);
 
-        vector<uint64_t> res;
-        vector<uint64_t> mod;
+        vector<mpz_class> res;
+        vector<mpz_class> mod;
 
-        for (auto [q, e] : factors) {
-            uint64_t qe = IntPow(q, e);
-            uint64_t xi = SolvePrimePower(q, e, b);
-
+        for (auto &[q, e] : factors) {
+            mpz_class xi = SolvePrimePower(q, e, b);
             res.push_back(xi);
+
+            mpz_class qe = 1;
+            for (mpz_class i = 0; i < e; i++)
+                qe *= q;
             mod.push_back(qe);
         }
 
         return CRT(res, mod);
     }
-
 };
 
 int main() {
-    int p, b;
+    mpz_class p, b;
     cout << "Enter group mod: ";
     cin >> p;
     Group G(p);
-    if (!G.Miller_Rabin(p)) {cerr << "Only primes."; return 1;}
 
-    cout << "Generator: " << G.a << "\n";
+    cout << "Generator: ";
+    cin >> G.a;
     cout << "Enter b: ";
     cin >> b;
-
-    int64_t log_bf  = G.Discrete_Log_Brute_Force(b);
+/*
+    mpz_class log_bf  = G.Discrete_Log_Brute_Force(b);
     cout << "Brute force:  " << G.a << "^" << log_bf  << " = " << b << " (mod " << G.p << ")\n";
     cout << "BF  verify: " << G.ModExp64(G.a, log_bf,  G.p) << "\n";
-
-    uint64_t log_sph = G.Silver_Pohlig_Hellman(b);
+*/
+    mpz_class log_sph = G.Silver_Pohlig_Hellman(b);
     cout << "Silver-Pohlig-Hellman: " << G.a << "^" << log_sph << " = " << b << " (mod " << G.p << ")\n";
-    cout << "SPH verify: " << G.ModExp64(G.a, log_sph, G.p) << "\n";
+    cout << "SPH verify: " << G.ModExp64(G.a, log_sph, p) << "\n";
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
