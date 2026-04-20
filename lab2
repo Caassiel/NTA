@@ -182,16 +182,15 @@ public:
 
             uint64_t exp = n / (q_k * q);
 
-            uint64_t a_inv = ModExp64(a, n - (x % n), p);
+            uint64_t a_inv = ModExp64(ModExp64(a, x, p), p-2, p);
             uint64_t b_k   = (__uint128_t)b * a_inv % p;
 
             uint64_t h_k = ModExp64(b_k, exp, p);
-            uint64_t g_k = ModExp64(a, exp, p);
 
             vector<uint64_t> table(q);
             table[0] = 1;
             for (uint64_t j = 1; j < q; j++)
-                table[j] = table[j - 1] * g_k % p;
+                table[j] = ModExp64(a, n * j / q, p);
 
             uint64_t x_k = 0;
             for (uint64_t j = 0; j < q; j++) {
@@ -208,16 +207,18 @@ public:
         return x % q_k;
     }
 
-    uint64_t CRT(const vector<uint64_t> &res, const vector<uint64_t> &mod) {
-        uint64_t M = 1;
-        for (auto m : mod) M *= m;
-        uint64_t result = 0;
-        for (size_t i = 0; i < mod.size(); i++) {
-            uint64_t Mi = M / mod[i];
-            uint64_t inv = mod_inverse(Mi % mod[i], mod[i]);
-            result = (result + (__uint128_t)res[i]* Mi % M * inv) % M;
+    uint64_t CRT(const vector<uint64_t>& r, const vector<uint64_t>& m) {
+        __uint128_t res = 0;
+        __uint128_t M = 1;
+        for (auto x : m) M *= x;
+
+        for (size_t i = 0; i < m.size(); i++) {
+            __uint128_t Mi = M / m[i];
+            uint64_t inv = mod_inverse(Mi % m[i], m[i]);
+            res += (__uint128_t)r[i] * Mi % M * inv;
         }
-        return result;
+
+        return (uint64_t)(res % M);
     }
 
 
@@ -264,6 +265,10 @@ int main() {
 
     return 0;
 }
+
+
+
+
 
 
 
