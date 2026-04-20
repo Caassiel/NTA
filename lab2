@@ -1,7 +1,6 @@
 #include <iostream>
 #include <cstdint>
 #include <random>
-#include <cmath>
 #include <map>
 using namespace std;
 
@@ -15,6 +14,16 @@ public:
         while (e > 0) {
             if (e & 1) x = (__uint128_t)x * y % mod;
             y = (__uint128_t)y * y % mod;
+            e >>= 1;
+        }
+        return x;
+    }
+
+    uint64_t IntPow(uint64_t b, uint64_t e) {
+        uint64_t x = 1;
+        while (e > 0) {
+            if (e & 1) x *= b;
+            b *= b;
             e >>= 1;
         }
         return x;
@@ -44,9 +53,7 @@ public:
         }
     }
 
-    Group(uint64_t p) : p(p) {
-        Find_Generator();
-    }
+    Group(uint64_t p) : p(p) { Find_Generator(); }
 
     uint64_t Discrete_Log_Brute_Force(uint64_t b){
         uint64_t result = 0;
@@ -60,52 +67,54 @@ public:
     }
 
     //SPH
-    uint64_t gcdExtended(uint64_t a, uint64_t b, uint64_t &x, uint64_t &y) {
-        if (a == 0)  {
-            x = 0;
-            y = 1;
-            return b;
-        }
-
-        uint64_t x1, y1;
-        uint64_t gcd = gcdExtended(b%a, a, x1, y1);
-
-        x = y1 - (b/a) * x1;
+    int64_t gcdExtended(int64_t a, int64_t b, int64_t &x, int64_t &y) {
+        if (a == 0) { x = 0; y = 1; return b; }
+        int64_t x1, y1;
+        int64_t gcd = gcdExtended(b % a, a, x1, y1);
+        x = y1 - (b / a) * x1;
         y = x1;
         return gcd;
     }
 
     uint64_t GCD(uint64_t a, uint64_t b) {
-        uint64_t x = 1, y = 1;
-        return gcdExtended(a, b, x, y);
+        while (b) { a %= b; swap(a, b); }
+        return a;
     }
 
     uint64_t mod_inverse(uint64_t a, uint64_t m) {
-        uint64_t x, y;
-        gcdExtended(a, m, x, y);
-        return (x % m + m) % m;
+        int64_t x, y;
+        gcdExtended((int64_t)a, (int64_t)m, x, y);
+        return (uint64_t)((x % (int64_t)m + (int64_t)m) % (int64_t)m);
     }
 
     uint64_t Polynomial(const uint64_t& x, const uint64_t& n) {
-        return (x * x + 1) % n;
+        return ((__uint128_t)x * x + 1) % n;
     }
 
     uint64_t Pollard_rho_Floyd(const uint64_t& n) {
         if (n % 2 == 0) return 2;
+        mt19937_64 rng(random_device{}());
+        uniform_int_distribution<uint64_t> dist(2, n - 2);
+        while (true) {
+            uint64_t x = dist(rng);
+            uint64_t y = x;
+            uint64_t d = 1;
 
-        uint64_t x = 1;
-        uint64_t y = x, d = 1;
-        while (d == 1) {
-            x = Polynomial(x, n);
-            y = Polynomial(Polynomial(y, n), n);
-            uint64_t diff = x > y ? x - y : y - x;
-            d = GCD(diff, n);
+            while (d == 1) {
+                x = Polynomial(x, n);
+                y = Polynomial(Polynomial(y, n), n);
+                uint64_t diff = x > y ? x - y : y - x;
+                d = GCD(diff, n);
+            }
+
+            if (d != n) return d;
         }
-        return (d == n) ? 1 : d;
     }
 
     bool Miller_Rabin(uint64_t p) {
         int trials = 20;
+        if (p < 2) return false;
+        if (p == 2 || p == 3) return true;
         if (p % 2 == 0) return false;
         int s = 0;
         uint64_t d = p - 1;
@@ -134,39 +143,55 @@ public:
 
     void Factorize(uint64_t n, map<uint64_t, uint64_t>& factors) {
         if (n == 1) return;
+        if (Miller_Rabin(n)) { factors[n]++; return; }
 
-        if (Miller_Rabin(n)) {
-            factors[n]++;
-            return;
-        }
+        uint64_t d = n;
 
-        uint64_t d = Pollard_rho_Floyd(n);
-        if (d == 1) {
-            factors[n]++;
-            return;
-        }
+        while (d == n || d == 1)
+            d = Pollard_rho_Floyd(n);
 
         Factorize(d, factors);
         Factorize(n / d, factors);
     }
 
-    uint64_t CRT(const vector<uint64_t>& res, const vector<uint64_t>& mod){
-        uint64_t M = 1;
+    uint64_t CRT(const vector<uint64_t> &res, const vector<uint64_t> &mod) {
+        __uint128_t M = 1;
         for (auto m : mod) M *= m;
         uint64_t result = 0;
-
-        for (uint64_t i = 0; i < mod.size(); i++) {
+        for (size_t i = 0; i < mod.size(); i++) {
             uint64_t Mi = M / mod[i];
-            uint64_t inv = mod_inverse(Mi, mod[i]);
-            result = (result + res[i] * Mi % M * inv % M) % M;
+            uint64_t inv = mod_inverse(Mi % mod[i], mod[i]);
+            uint64_t term = (uint64_t)((__uint128_t)(res[i] % mod[i]) * Mi % M);
+            term = (uint64_t)((__uint128_t)term * inv % M);
+            result = (result + term) % M;
         }
-
         return result;
     }
 
-    uint64_t SolvePrimePower(uint64_t q, uint64_t e, uint64_t b);
+    uint64_t SolvePrimePower(uint64_t q, uint64_t e, uint64_t b) {
+        uint64_t n = p - 1;
+        uint64_t x = 0;
 
+        uint64_t gamma = ModExp64(a, n / q, p);
 
+        for (uint64_t k = 0; k < e; k++) {
+            uint64_t exp = n / IntPow(q, k + 1);
+
+            uint64_t a_inv_x = ModExp64(a, (p - 1 - x % (p - 1)) % (p - 1), p);
+            uint64_t inner   = (__uint128_t)b * a_inv_x % p;
+            uint64_t h_k     = ModExp64(inner, exp, p);
+
+            uint64_t d_k = 0, cur = 1;
+            for (uint64_t j = 0; j < q; j++) {
+                if (cur == h_k) { d_k = j; break; }
+                cur = (__uint128_t)cur * gamma % p;
+            }
+
+            x += d_k * IntPow(q, k);
+        }
+
+        return x;
+    }
 
     uint64_t Silver_Pohlig_Hellman(uint64_t b){
         uint64_t n = p - 1;
@@ -178,9 +203,9 @@ public:
         vector<uint64_t> mod;
 
         for (auto [q, e] : factors) {
-            uint64_t qe = pow(q, e);
-
+            uint64_t qe = IntPow(q, e);
             uint64_t xi = SolvePrimePower(q, e, b);
+
             res.push_back(xi);
             mod.push_back(qe);
         }
@@ -190,16 +215,30 @@ public:
 
 };
 
-int main(){
-    Group G(73);
+int main() {
+    int p, b;
+    cout << "Enter group mod: ";
+    cin >> p;
+    Group G(p);
+    if (!G.Miller_Rabin(p)) {cerr << "Only primes."; return 1;}
 
-    uint64_t Log = G.Discrete_Log_Brute_Force(20);
     cout << "Generator: " << G.a << "\n";
-    cout << "Discrete log: " << Log << "\n";
+    cout << "Enter b: ";
+    cin >> b;
 
+    uint64_t log_bf  = G.Discrete_Log_Brute_Force(b);
+    uint64_t log_sph = G.Silver_Pohlig_Hellman(b);
+
+    cout << "Brute force:  " << G.a << "^" << log_bf  << " = " << b << " (mod " << G.p << ")\n";
+    cout << "Silver-Pohlig-Hellman: " << G.a << "^" << log_sph << " = " << b << " (mod " << G.p << ")\n";
+
+    cout << "BF  verify: " << G.ModExp64(G.a, log_bf,  G.p) << "\n";
+    cout << "SPH verify: " << G.ModExp64(G.a, log_sph, G.p) << "\n";
 
     return 0;
 }
+
+
 
 
 
