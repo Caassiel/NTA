@@ -103,30 +103,29 @@ public:
         mpz_class x = 0;
         mpz_class q_k = 1;
 
-        mpz_class g_k = ModExp64(a, n / q, p);
+        mpz_class g_k = ModExp64(a, n / q, p);                      // a ^ (n / q) mod p
 
         for (mpz_class k = 0; k < e; k++) {
 
-            mpz_class exp = n / (q_k * q);
+            mpz_class exp = n / (q_k * q);                          // n / q_i^(k+1)
+            mpz_class a_inv_x = ModExp64(a, (n - x % n) % n, p);    // a^-1 mod p
+            mpz_class inner = (b * a_inv_x) % p;                    //(b * a ^ -1) mod p
 
-            mpz_class a_inv_x = ModExp64(a, (n - x % n) % n, p);
-            mpz_class inner = (b * a_inv_x) % p;
+            mpz_class h_k = ModExp64(inner, exp, p);                // (b * a ^ -1) ^ (n/p^k) mod p
 
-            mpz_class h_k = ModExp64(inner, exp, p);
+            mpz_class cur = 1;                                      // counter
+            mpz_class x_k = 0;                                      // residue output
 
-            mpz_class cur = 1;
-            mpz_class x_k = 0;
-
-            for (mpz_class j = 0; j < q; j++) {
+            for (mpz_class j = 0; j < q; j++) {                     // "table"
                 if (cur == h_k) {
                     x_k = j;
                     break;
                 }
-                cur = (cur * g_k) % p;
+                cur = (cur * g_k) % p;                              // collision
             }
 
-            x += x_k * q_k;
-            q_k *= q;
+            x += x_k * q_k;                                         // x = x0 + x1 * q_i + x2 * q_i^2 ...
+            q_k *= q;                                               // q_i := q_i * q
         }
 
         return x % q_k;
@@ -200,6 +199,19 @@ int main() {
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
