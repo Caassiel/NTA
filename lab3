@@ -7,37 +7,50 @@
 #include <string>
 #include <random>
 #include <gmpxx.h>
+#include <map>
 using namespace std;
 
-#include "factorization.hpp"
-#include "index_calculus.hpp"
+#include "from_lab1.cpp"
 
-IndexCalculus::IndexCalculus(const mpz_class& p, const mpz_class& g): p(p), g(g) {}
+mpz_class TrialDivision47(const mpz_class& n);
+mpz_class Pollard_rho_Floyd(const mpz_class& n, const mpz_class& c);
+bool Miller_Rabin(const mpz_class& p, int trials);
+std::vector<std::pair<mpz_class,int>> factorize(const mpz_class& n);
+
+bool FactorOverBase(
+    mpz_class n,
+    const std::vector<mpz_class>& factor_base,
+    std::vector<int>& exponents
+);
+
+
+class IndexCalculus {
+public:
+    IndexCalculus(const mpz_class& p, const mpz_class& a);
+    mpz_class solve(const mpz_class& b);
+
+    mpz_class p, a;
+
+    std::vector<mpz_class> factor_base;
+    std::map<mpz_class, std::vector<int>> relations;
+
+    void buildFactorBase(int B);
+    bool isSmooth(mpz_class n, std::vector<int>& e);
+    void collectRelations(int r);
+    std::vector<mpz_class> solveLinearSystem();
+};
+
+IndexCalculus::IndexCalculus(const mpz_class& p, const mpz_class& a): p(p), a(a) {}
 
 void IndexCalculus::buildFactorBase(int B) {
     for (int i = 2; i <= B; i++) {
-        bool prime = true;
-        for (int j = 2; j*j <= i; j++) {
-            if (i % j == 0) {
-                prime = false;
-                break;
-            }
-        }
-        if (prime) factor_base.push_back(i);
+        mpz_class k(i);
+        if (Miller_Rabin(k)) factor_base.push_back(i);
     }
 }
 
 bool IndexCalculus::isSmooth(mpz_class n, vector<int>& exponents) {
-    exponents.assign(factor_base.size(), 0);
-
-    for (size_t i = 0; i < factor_base.size(); i++) {
-        const mpz_class& prime = factor_base[i];
-        while (n % prime == 0) {
-            n /= prime;
-            exponents[i]++;
-        }
-    }
-    return (n == 1);
+    return FactorOverBase(n, factor_base, exponents);
 }
 
 void IndexCalculus::collectRelations(int required) {
@@ -45,7 +58,7 @@ void IndexCalculus::collectRelations(int required) {
 
     while ((int)relations.size() < required) {
         mpz_class val;
-        mpz_powm(val.get_mpz_t(), g.get_mpz_t(), k.get_mpz_t(), p.get_mpz_t());
+        mpz_powm(val.get_mpz_t(), a.get_mpz_t(), k.get_mpz_t(), p.get_mpz_t());
 
         vector<int> exponents;
         if (isSmooth(val, exponents)) {
@@ -55,25 +68,139 @@ void IndexCalculus::collectRelations(int required) {
     }
 }
 
-vector<mpz_class> IndexCalculus::solveLinearSystem() {
+mpz_class mod_inverse(mpz_class a, mpz_class m) {
+    mpz_class x, y, gcd;
+    mpz_gcdext(gcd.get_mpz_t(), x.get_mpz_t(), y.get_mpz_t(), a.get_mpz_t(), m.get_mpz_t());
 
-    // Implement modular Gaussian elimination
+    x %= m;
+    if (x < 0) x += m;
+    return x;
+}
 
-    vector<mpz_class> logs(factor_base.size());
+
+mpz_class CRT(vector<mpz_class> res, vector<mpz_class> mod) {
+    mpz_class M = 1;
+    for (auto &x : mod) M *= x;
+    mpz_class result = 0;
+    for (size_t i = 0; i < mod.size(); i++) {
+        mpz_class Mi = M / mod[i];
+        mpz_class inv = mod_inverse(Mi % mod[i], mod[i]);
+        result += (res[i] * Mi % M) * inv;
+    }
+    return result % M;
+}
+
+static vector<mpz_class> solveModQ(vector<vector<mpz_class>> A, vector<mpz_class> b,int n, int m, const mpz_class& q){
+    vector<int> pivot_col(m, -1);
+
+    for (int col = 0, r = 0; col < n && r < m; col++) {
+        int pivot = -1;
+        for (int i = r; i < m; i++) {
+            mpz_class g;
+            mpz_gcd(g.get_mpz_t(), A[i][col].get_mpz_t(), q.get_mpz_t());
+            if (g == 1) { pivot = i; break; }
+        }
+        if (pivot == -1) continue;
+
+        swap(A[r], A[pivot]);
+        swap(b[r], b[pivot]);
+        pivot_col[r] = col;
+
+        mpz_class inv;
+        mpz_invert(inv.get_mpz_t(), A[r][col].get_mpz_t(), q.get_mpz_t());
+
+        for (int j = col; j < n; j++)
+            A[r][j] = (A[r][j] * inv) % q;
+        b[r] = (b[r] * inv) % q;
+
+        for (int i = 0; i < m; i++) {
+            if (i != r && A[i][col] != 0) {
+                mpz_class fac = A[i][col];
+                for (int j = col; j < n; j++) {
+                    A[i][j] = ((A[i][j] - fac * A[r][j]) % q + q) % q;
+                }
+                b[i] = ((b[i] - fac * b[r]) % q + q) % q;
+            }
+        }
+        r++;
+    }
+
+    vector<mpz_class> logs(n, 0);
+    for (int i = 0; i < m; i++)
+        if (pivot_col[i] != -1)
+            logs[pivot_col[i]] = b[i];
+
     return logs;
 }
 
-mpz_class IndexCalculus::solve(const mpz_class& h) {
-    buildFactorBase(50);
-    collectRelations(factor_base.size()+5);
+vector<mpz_class> IndexCalculus::solveLinearSystem() {
+    mpz_class mod = p - 1;
+    int n = factor_base.size();
+    int m = relations.size();
+
+    vector<vector<mpz_class>> A(m, vector<mpz_class>(n));
+    vector<mpz_class> b(m);
+    int row = 0;
+    for (auto& [k, exps] : relations) {
+        b[row] = k % mod;
+        for (int j = 0; j < n; j++)
+            A[row][j] = exps[j] % mod;
+        row++;
+    }
+
+    auto factored = factorize(p - 1);
+
+    vector<mpz_class>              sub_mods;
+    vector<vector<mpz_class>>      sub_logs;
+
+    for (auto& [prime, exp] : factored) {
+        mpz_class q;
+        mpz_pow_ui(q.get_mpz_t(), prime.get_mpz_t(), (unsigned)exp);
+        sub_mods.push_back(q);
+
+        vector<vector<mpz_class>> Aq(m, vector<mpz_class>(n));
+        vector<mpz_class>          bq(m);
+        for (int i = 0; i < m; i++) {
+            bq[i] = b[i] % q;
+            for (int j = 0; j < n; j++)
+                Aq[i][j] = A[i][j] % q;
+        }
+
+        sub_logs.push_back(solveModQ(Aq, bq, n, m, q));
+    }
+
+    vector<mpz_class> logs(n);
+    for (int i = 0; i < n; i++) {
+        vector<mpz_class> residues;
+        for (auto& sl : sub_logs)
+            residues.push_back(sl[i]);
+        logs[i] = CRT(residues, sub_mods);
+    }
+
+    return logs;
+}
+
+int ComputeFactorBaseBound(const mpz_class& n) {
+    double ln_n = mpz_sizeinbase(n.get_mpz_t(), 2) * log(2.0);
+    double ln_ln_n = log(ln_n);
+    double B = 3.38 * exp(0.5 * sqrt(ln_n * ln_ln_n));
+    if (B < 50) B = 50;
+    if (B > 50000) B = 50000;
+
+    return (int)B;
+}
+
+mpz_class IndexCalculus::solve(const mpz_class& b) {
+    buildFactorBase(ComputeFactorBaseBound(p));
+    collectRelations(factor_base.size()+10);
 
     auto logs = solveLinearSystem();
 
     mpz_class k = 1;
     while (true) {
         mpz_class val, temp;
-        mpz_powm(temp.get_mpz_t(), g.get_mpz_t(), k.get_mpz_t(), p.get_mpz_t());
-        val = (h * temp) % p;
+        mpz_powm(temp.get_mpz_t(), a.get_mpz_t(), k.get_mpz_t(), p.get_mpz_t());
+        val = (b * temp) % p;
 
         vector<int> exponents;
         if (isSmooth(val, exponents)) {
@@ -95,30 +222,35 @@ mpz_class IndexCalculus::solve(const mpz_class& h) {
 
 
 int main() {
-    mpz_class p = 1019;
-    mpz_class g = 2;
-    mpz_class h = 5;
+    //mpz_class p("131421701276962801");
+    //mpz_class a("20774904390137831");
+    //mpz_class b("9890141120090379");
 
-    IndexCalculus ic(p, g);
+    mpz_class p = 47;
+    mpz_class a = 10;
+    mpz_class b = 17;
 
-    cout << "g = " << g << "\n";
-    cout << "h = " << h << "\n";
-    cout << "p = " << p << "\n\n";
+    IndexCalculus ic(p, a);
 
-    mpz_class x = ic.solve(h);
+    cout << "p = " << p << "\n";
+    cout << "a = " << a << "\n";
+    cout << "b = " << b << "\n\n";
+
+    mpz_class x = ic.solve(b);
 
     cout << "Result x = " << x << "\n";
 
     mpz_class check;
-    mpz_powm(check.get_mpz_t(), g.get_mpz_t(), x.get_mpz_t(), p.get_mpz_t());
+    mpz_powm(check.get_mpz_t(), a.get_mpz_t(), x.get_mpz_t(), p.get_mpz_t());
 
-    cout << "Verification: g^x mod p = " << check << "\n";
+    cout << "Verification: a^x mod p = " << check << "\n";
 
-    if (check == h)
+    if (check == b)
         cout << "Correct\n";
     else
         cout << "Incorrect\n";
 
     return 0;
 }
+
 
