@@ -1,64 +1,124 @@
 #include <iostream>
-#include <cstdint>
-#include <vector>
 #include <cmath>
+#include <vector>
+#include <bitset>
+#include <chrono>
+#include <iomanip>
+#include <string>
+#include <random>
+#include <gmpxx.h>
 using namespace std;
 
-class Group{
+#include "factorization.hpp"
+#include "index_calculus.hpp"
 
-public:
-    uint64_t p;
-    uint64_t a;
+IndexCalculus::IndexCalculus(const mpz_class& p, const mpz_class& g): p(p), g(g) {}
 
-    uint64_t ModExp64(uint64_t b, uint64_t e, uint64_t mod) {
-        uint64_t x = 1, y = b % mod;
-        while (e > 0) {
-            if (e & 1) x = (__uint128_t)x * y % mod;
-            y = (__uint128_t)y * y % mod;
-            e >>= 1;
-        }
-        return x;
-    }
-
-    bool IsGenerator(uint64_t g) {
-        uint64_t phi = p - 1;
-        uint64_t temp = phi;
-
-        for (uint64_t q = 2; q * q <= temp; q++) {
-            if (temp % q == 0) {
-                if (ModExp64(g, phi / q, p) == 1)
-                    return false;
-                while (temp % q == 0)
-                    temp /= q;
+void IndexCalculus::buildFactorBase(int B) {
+    for (int i = 2; i <= B; i++) {
+        bool prime = true;
+        for (int j = 2; j*j <= i; j++) {
+            if (i % j == 0) {
+                prime = false;
+                break;
             }
         }
+        if (prime) factor_base.push_back(i);
     }
-    const uint64_t n = p - 1;
-    uint64_t B = exp(3.38 * sqrt(log(n) * log(log(n))));
+}
 
-    vector<uint64_t> FactorBase(const uint64_t& n, int B) {
-        vector<bool> is_prime(B + 1, true);
-        is_prime[0] = is_prime[1] = false;
-        for (int i = 2; (long long)i * i <= B; i++)
-            if (is_prime[i])
-                for (int j = i * i; j <= B; j += i) is_prime[j] = false;
+bool IndexCalculus::isSmooth(mpz_class n, vector<int>& exponents) {
+    exponents.assign(factor_base.size(), 0);
 
-        vector<uint64_t> fb;
-        for (int p = 2; p <= B; p++) {
-            if (!is_prime[p]) continue;
-            if (ModExp64(n % p, ((p - 1) / 2), p) == 1)
-                fb.push_back(p);
+    for (size_t i = 0; i < factor_base.size(); i++) {
+        const mpz_class& prime = factor_base[i];
+        while (n % prime == 0) {
+            n /= prime;
+            exponents[i]++;
         }
-        return fb;
     }
+    return (n == 1);
+}
 
-};
+void IndexCalculus::collectRelations(int required) {
+    mpz_class k = 1;
+
+    while ((int)relations.size() < required) {
+        mpz_class val;
+        mpz_powm(val.get_mpz_t(), g.get_mpz_t(), k.get_mpz_t(), p.get_mpz_t());
+
+        vector<int> exponents;
+        if (isSmooth(val, exponents)) {
+            relations[k] = exponents;
+        }
+        k++;
+    }
+}
+
+vector<mpz_class> IndexCalculus::solveLinearSystem() {
+
+    // Implement modular Gaussian elimination
+
+    vector<mpz_class> logs(factor_base.size());
+    return logs;
+}
+
+mpz_class IndexCalculus::solve(const mpz_class& h) {
+    buildFactorBase(50);
+    collectRelations(factor_base.size()+5);
+
+    auto logs = solveLinearSystem();
+
+    mpz_class k = 1;
+    while (true) {
+        mpz_class val, temp;
+        mpz_powm(temp.get_mpz_t(), g.get_mpz_t(), k.get_mpz_t(), p.get_mpz_t());
+        val = (h * temp) % p;
+
+        vector<int> exponents;
+        if (isSmooth(val, exponents)) {
+            mpz_class result = 0;
+
+            for (size_t i = 0; i < exponents.size(); i++) {
+                result += exponents[i] * logs[i];
+            }
+
+            result -= k;
+            result %= (p - 1);
+
+            if (result < 0) result += (p - 1);
+            return result;
+        }
+        k++;
+    }
+}
 
 
+int main() {
+    mpz_class p = 1019;
+    mpz_class g = 2;
+    mpz_class h = 5;
 
+    IndexCalculus ic(p, g);
 
-int main()
-{
+    cout << "g = " << g << "\n";
+    cout << "h = " << h << "\n";
+    cout << "p = " << p << "\n\n";
+
+    mpz_class x = ic.solve(h);
+
+    cout << "Result x = " << x << "\n";
+
+    mpz_class check;
+    mpz_powm(check.get_mpz_t(), g.get_mpz_t(), x.get_mpz_t(), p.get_mpz_t());
+
+    cout << "Verification: g^x mod p = " << check << "\n";
+
+    if (check == h)
+        cout << "Correct\n";
+    else
+        cout << "Incorrect\n";
 
     return 0;
 }
+
