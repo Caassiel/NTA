@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <random>
+#include <cmath>
 
 using namespace std;
 
@@ -9,29 +10,61 @@ static const int RANK = 30;
 class LLL{
 
 private:
-    int matrix[RANK][RANK];
-    float delta;
+    int basis[RANK][RANK];
+    double b_star[RANK][RANK];
+    double mu[RANK][RANK];
+
+    double B[RANK];
+    double delta;
 
 public:
+    double Scalar_Product(const double* a, const double* b) {
+        double s = 0.0;
+        for (int i = 0; i < RANK; i++) s += a[i] * b[i];
+        return s;
+    }
+
+    double Scalar_Product_Int_Double(const int* a, const double* b) {
+        double s = 0.0;
+        for (int i = 0; i < RANK; i++) s += a[i] * b[i];
+        return s;
+    }
+
+    void SwapRows(int a, int b) {
+        for (int i = 0; i < RANK; i++) swap(basis[a][i], basis[b][i]);
+    }
+
     void Generate_Matrix(){
         const int LIMIT = 50000;
         static mt19937_64 rng(random_device{}());
         uniform_int_distribution<int32_t> dist(-LIMIT, LIMIT);
         for (int i = 0; i < RANK; i++){
             for (int j = 0; j < RANK; j++){
-                matrix[i][j] = dist(rng);
+                basis[i][j] = dist(rng);
             }
         }
     }
 
     LLL(float d){
-        if (d < 0.25 || d > 1) {cerr << "Invalid parameter."; exit(1);}
+        if (d <= 0.25 || d >= 1) {cerr << "Invalid parameter.\n"; exit(1);}
+        delta = d;
         Generate_Matrix();
     }
 
+     void Gram_Schmidt() {
+        for (int i = 0; i < RANK; i++) {
+            for (int t = 0; t < RANK; t++) b_star[i][t] = basis[i][t];
 
+            for (int j = 0; j < i; j++) {
+                mu[i][j] = Scalar_Product_Int_Double(basis[i], b_star[j]) / B[j];
+                for (int t = 0; t < RANK; t++) b_star[i][t] -= mu[i][j] * b_star[j][t];
+            }
 
+            B[i] = Scalar_Product(b_star[i], b_star[i]);
+        }
+    }
 
+  
 
 };
 
@@ -48,3 +81,4 @@ int main()
 
     return 0;
 }
+
