@@ -3,6 +3,7 @@
 #include <random>
 #include <cmath>
 #include <chrono>
+#include <fstream>
 
 using namespace std;
 using namespace chrono;
@@ -14,12 +15,14 @@ static const int LIMIT  = 10000;
 class LLL{
 
 private:
-    int64_t basis[RANK][RANK]   = {};
-    double b_star[RANK][RANK]   = {};
-    double mu[RANK][RANK]       = {};
+    int64_t basis[RANK][RANK]           = {};
+    double b_star[RANK][RANK]           = {};
+    double mu[RANK][RANK]               = {};
 
-    double B[RANK]              = {};
-    double delta                = 0.0;
+    double B[RANK]                      = {};
+    double delta                        = 0.0;
+
+    int64_t original_basis[RANK][RANK]  = {};
 
 public:
     inline double Scalar_Product(const double* a, const double* b) {
@@ -44,6 +47,7 @@ public:
         for (int i = 0; i < RANK; i++){
             for (int j = 0; j < RANK; j++){
                 basis[i][j] = dist(rng);
+                original_basis[i][j] = basis[i][j];
             }
         }
     }
@@ -158,13 +162,36 @@ public:
         return exp((log_det - log_norm_product) / RANK);
     }
 
+    void PrintMatrix(ofstream& out, int64_t M[RANK][RANK]) {
+        for (int i = 0; i < RANK; i++) {
+            for (int j = 0; j < RANK; j++) {
+                out << M[i][j] << " ";
+            }
+            out << "\n";
+        }
+    }
 
+    void WriteExperiment(ofstream& out, double delta, long long runtime, int swaps, double HC, double b1) {
+        out << "\n";
+        out << "Delta: " << delta << "\n";
+        out << "Runtime (microseconds): " << runtime << "\n";
+        out << "Swaps: " << swaps << "\n";
+        out << "Hadamard coefficient: " << HC << "\n";
+        out << "||b1||: " << b1 << "\n";
+        out << "\nOriginal basis:\n\n";
+        PrintMatrix(out, original_basis);
+        out << "\nLLL-reduced basis:\n\n";
+        PrintMatrix(out, basis);
+        out << "\n\n";
+    }
 
 };
 
 int main(){
+    ofstream out("lll_results.txt");
+    if (!out) {cerr << "Failed to open file.\n"; return 1;}
+
     vector<double> deltas = {
-        0.26,
         0.50,
         0.75,
         0.90,
@@ -184,12 +211,17 @@ int main(){
         for (int i = 0; i < TRIALS; i++){
             LLL M(d);
             auto Start = high_resolution_clock::now();
-            Swaps  += M.LLL_Alg();
+            int s = M.LLL_Alg();
             auto End = high_resolution_clock::now();
             auto duration = duration_cast<microseconds>(End - Start);
+            double hc = M.Hadamard_Coefficient_GS();
+            double b1 = M.b_i_norm(0);
+            M.WriteExperiment(out, d, duration.count(), s, hc, b1);
+
             time   += duration;
-            HC     += M.Hadamard_Coefficient_GS();
-            b1_len += M.b_i_norm(0);
+            Swaps  += s;
+            HC     += hc;
+            b1_len += b1;
         }
 
         cout << "Avg  time   = " << time.count()/TRIALS << " microseconds \n";
@@ -199,9 +231,9 @@ int main(){
         cout << "________________________\n\n";
     }
 
-
     return 0;
 }
+
 
 
 
