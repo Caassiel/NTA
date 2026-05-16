@@ -7,9 +7,9 @@
 using namespace std;
 using namespace chrono;
 
-static const int RANK   = 50;
+static const int RANK   = 30;
 static const int TRIALS = 50;
-static const int LIMIT  = 50000;
+static const int LIMIT  = 10000;
 
 class LLL{
 
@@ -28,7 +28,7 @@ public:
         return s;
     }
 
-    inline double Scalar_Product_Int_Double(const int* a, const double* b) {
+    inline double Scalar_Product_Int_Double(const int64_t* a, const double* b) {
         double s = 0.0;
         for (int i = 0; i < RANK; i++) s += a[i] * b[i];
         return s;
@@ -54,16 +54,48 @@ public:
         Generate_Matrix();
     }
 
-    void Gram_Schmidt() {
+    void FULL_Gram_Schmidt() {
         for (int i = 0; i < RANK; i++) {
             for (int t = 0; t < RANK; t++) b_star[i][t] = basis[i][t];
-
             for (int j = 0; j < i; j++) {
                 mu[i][j] = Scalar_Product_Int_Double(basis[i], b_star[j]) / B[j];
                 for (int t = 0; t < RANK; t++) b_star[i][t] -= mu[i][j] * b_star[j][t];
             }
 
             B[i] = Scalar_Product(b_star[i], b_star[i]);
+        }
+    }
+
+    void REDUCED_Gram_Schmidt(int k) {
+        double mu_k         = mu[k][k - 1];
+        double B_k          = B[k];
+        double B_km1        = B[k - 1];
+
+        double B_new_km1    = B_k + mu_k * mu_k * B_km1;
+        double mu_new       = mu_k * B_km1 / B_new_km1;
+        double B_new_k      = B_km1 * B_k / B_new_km1;
+
+        for (int t = 0; t < RANK; t++) {
+            double old_km1    = b_star[k - 1][t];
+            b_star[k - 1][t] = b_star[k][t] + mu_k * old_km1;
+            b_star[k][t]     = mu_new * b_star[k][t] + (B_new_k / B_k) * old_km1;
+        }
+
+        B[k - 1] = B_new_km1;
+        B[k]     = B_new_k;
+
+        for (int i = k + 1; i < RANK; i++) {
+            double t     = mu[i][k];
+            mu[i][k]     = mu[i][k - 1] - mu_k * t;
+            mu[i][k - 1] = t + mu_new * mu[i][k];
+        }
+
+        mu[k][k - 1] = mu_new;
+
+        for (int j = 0; j < k - 1; j++) {
+            double old_mu_km1 = mu[k - 1][j];
+            mu[k - 1][j] = mu[k][j];
+            mu[k][j]     = old_mu_km1;
         }
     }
 
@@ -78,13 +110,23 @@ public:
         }
     }
 
+    void Recompute_Row_k(int k) {
+        for (int t = 0; t < RANK; t++) b_star[k][t] = (double)basis[k][t];
+        for (int j = 0; j < k; j++) {
+            mu[k][j] = Scalar_Product_Int_Double(basis[k], b_star[j]) / B[j];
+            for (int t = 0; t < RANK; t++) b_star[k][t] -= mu[k][j] * b_star[j][t];
+        }
+        B[k] = Scalar_Product(b_star[k], b_star[k]);
+    }
+
     int LLL_Alg() {
         int swap_count = 0;
-        Gram_Schmidt();
+        FULL_Gram_Schmidt();
         int k = 1;
 
         while (k < RANK) {
             SizeReduce(k);
+            Recompute_Row_k(k);
             double lhs = B[k];
             double rhs = (delta - mu[k][k - 1] * mu[k][k - 1]) * B[k - 1];
             if (lhs >= rhs) {
@@ -92,7 +134,7 @@ public:
 
             } else {
                 SwapRows(k, k - 1); swap_count++;
-                Gram_Schmidt();
+                REDUCED_Gram_Schmidt(k);
                 k = max(k - 1, 1);
             }
         }
@@ -122,12 +164,15 @@ public:
 
 int main(){
     vector<double> deltas = {
+        0.26,
         0.50,
         0.75,
         0.90,
         0.95,
         0.99
     };
+
+    cout << "CURRENT RANK = " << RANK << "\n\n";
 
     for (auto d : deltas){
         auto    time = microseconds::zero();
@@ -157,6 +202,7 @@ int main(){
 
     return 0;
 }
+
 
 
 
