@@ -7,26 +7,28 @@
 using namespace std;
 using namespace chrono;
 
-static const int RANK = 30;
+static const int RANK   = 50;
+static const int TRIALS = 50;
+static const int LIMIT  = 50000;
 
 class LLL{
 
 private:
-    int basis[RANK][RANK];
-    double b_star[RANK][RANK];
-    double mu[RANK][RANK];
+    int64_t basis[RANK][RANK]   = {};
+    double b_star[RANK][RANK]   = {};
+    double mu[RANK][RANK]       = {};
 
-    double B[RANK];
-    double delta;
+    double B[RANK]              = {};
+    double delta                = 0.0;
 
 public:
-    double Scalar_Product(const double* a, const double* b) {
+    inline double Scalar_Product(const double* a, const double* b) {
         double s = 0.0;
         for (int i = 0; i < RANK; i++) s += a[i] * b[i];
         return s;
     }
 
-    double Scalar_Product_Int_Double(const int* a, const double* b) {
+    inline double Scalar_Product_Int_Double(const int* a, const double* b) {
         double s = 0.0;
         for (int i = 0; i < RANK; i++) s += a[i] * b[i];
         return s;
@@ -37,7 +39,6 @@ public:
     }
 
     void Generate_Matrix(){
-        const int LIMIT = 50000;
         static mt19937_64 rng(random_device{}());
         uniform_int_distribution<int32_t> dist(-LIMIT, LIMIT);
         for (int i = 0; i < RANK; i++){
@@ -47,13 +48,13 @@ public:
         }
     }
 
-    LLL(float d){
+    LLL(double d){
         if (d <= 0.25 || d >= 1) {cerr << "Invalid parameter.\n"; exit(1);}
         delta = d;
         Generate_Matrix();
     }
 
-     void Gram_Schmidt() {
+    void Gram_Schmidt() {
         for (int i = 0; i < RANK; i++) {
             for (int t = 0; t < RANK; t++) b_star[i][t] = basis[i][t];
 
@@ -71,6 +72,8 @@ public:
             int r = (int)round(mu[k][j]);
             if (r != 0) {
                 for (int i = 0; i < RANK; i++) basis[k][i] -= r * basis[j][i];
+                for (int l = 0; l < j; l++) mu[k][l] -= r * mu[j][l];
+                mu[k][j] -= r;
             }
         }
     }
@@ -82,7 +85,6 @@ public:
 
         while (k < RANK) {
             SizeReduce(k);
-            Gram_Schmidt();
             double lhs = B[k];
             double rhs = (delta - mu[k][k - 1] * mu[k][k - 1]) * B[k - 1];
             if (lhs >= rhs) {
@@ -98,15 +100,27 @@ public:
         return swap_count;
     }
 
+    double b_i_norm(int i){
+        double norm_sq = 0.0;
+        for (int j = 0; j < RANK; j++) norm_sq += 1.0 * basis[i][j] * basis[i][j];
+        return sqrt(norm_sq);
+    }
+
+    double Hadamard_Coefficient_GS() {
+        double log_det = 0.0;
+        double log_norm_product = 0.0;
+
+        for (int i = 0; i < RANK; i++) log_det += 0.5 * log(B[i]);
+        for (int i = 0; i < RANK; i++) log_norm_product += log(b_i_norm(i));
+
+        return exp((log_det - log_norm_product) / RANK);
+    }
+
+
 
 };
 
-
-using namespace std;
-
-int main()
-{
-
+int main(){
     vector<double> deltas = {
         0.50,
         0.75,
@@ -115,26 +129,34 @@ int main()
         0.99
     };
 
-    auto time = nanoseconds::zero();
-    int Swaps = 0;
-
     for (auto d : deltas){
+        auto    time = microseconds::zero();
+        int     Swaps = 0;
+        double  HC = 0.0;
+        double  b1_len = 0.0;
         cout << "Delta = " << d << "\n";
-        for (int i = 0; i < 50; i++){
+
+        for (int i = 0; i < TRIALS; i++){
             LLL M(d);
             auto Start = high_resolution_clock::now();
-            M.LLL_Alg();
+            Swaps  += M.LLL_Alg();
             auto End = high_resolution_clock::now();
-            auto duration = duration_cast<nanoseconds>(End - Start);
-            time = time + duration;
+            auto duration = duration_cast<microseconds>(End - Start);
+            time   += duration;
+            HC     += M.Hadamard_Coefficient_GS();
+            b1_len += M.b_i_norm(0);
         }
-        cout << "Avg  time = " << time.count()/50 << " nanoseconds \n";
-        cout << "Avg swaps = " << Swaps/50 << "\n";
+
+        cout << "Avg  time   = " << time.count()/TRIALS << " microseconds \n";
+        cout << "Avg swaps   = " << (double)Swaps/TRIALS << "\n";
+        cout << "Avg H(B)    = " << HC/TRIALS << "\n";
+        cout << "Avg ||b1||  = " << b1_len/TRIALS << "\n";
         cout << "________________________\n\n";
     }
 
 
     return 0;
 }
+
 
 
