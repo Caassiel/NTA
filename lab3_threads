@@ -12,7 +12,10 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+
+#include <future>
 using namespace std;
+using namespace chrono;
 
 #include "from_lab1.cpp"
 
@@ -69,7 +72,6 @@ public:
         return FactorOverBase(n, factor_base, exponents);
     }
 
-
     static void relation_worker(IndexCalculus* ic, int required, const mpz_class& order, map<mpz_class, vector<int>>& relations, mutex& mtx, atomic<int>& count){
         gmp_randclass rng(gmp_randinit_mt);
         rng.seed(time(nullptr) ^ hash<thread::id>{}(this_thread::get_id()));
@@ -78,10 +80,7 @@ public:
             mpz_class k = rng.get_z_range(order - 1) + 1;
 
             mpz_class val;
-            mpz_powm(val.get_mpz_t(),
-                      ic->a.get_mpz_t(),
-                      k.get_mpz_t(),
-                      ic->p.get_mpz_t());
+            mpz_powm(val.get_mpz_t(), ic->a.get_mpz_t(), k.get_mpz_t(), ic->p.get_mpz_t());
 
             vector<int> exps;
             if (ic->isSmooth(val, exps)) {
@@ -102,7 +101,6 @@ public:
         vector<thread> threads;
 
         rel_count = 0;
-
         mpz_class order = p - 1;
 
         for (int i = 0; i < T; i++) {
@@ -183,10 +181,7 @@ vector<mpz_class> IndexCalculus::solveLinearSystem() {
 
             swap(Aq[r], Aq[pivot]);
             swap(bq[r], bq[pivot]);
-
-            vector<bool> determined(n, false);
             pivot_col[col] = r;
-            if (pivot_col[col] != -1) determined[col] = true;
 
             mpz_class inv;
             mpz_invert(inv.get_mpz_t(), Aq[r][col].get_mpz_t(), q.get_mpz_t());
@@ -202,13 +197,10 @@ vector<mpz_class> IndexCalculus::solveLinearSystem() {
                 if (Aq[i][col] != 0) {
                     mpz_class factor = Aq[i][col];
 
-                    for (int j = col; j < n; j++) {
+                    for (int j = col; j < n; j++)
                         Aq[i][j] = ((Aq[i][j] - factor * Aq[r][j]) % q + q) % q;
-                        bq[i]    = ((bq[i] - factor * bq[r]) % q + q) % q;
-                    }
 
-                    bq[i] = (bq[i] - factor * bq[r]) % q;
-                    if (bq[i] < 0) bq[i] += q;
+                    bq[i] = ((bq[i] - factor * bq[r]) % q + q) % q;
                 }
             }
 
@@ -267,7 +259,6 @@ void solve_worker(IndexCalculus* ic, const mpz_class& b, const vector<mpz_class>
         if (ic->isSmooth(val, exps)) {
 
             mpz_class x = 0;
-            bool all_known = true;
             for (size_t i = 0; i < exps.size(); i++){
                 x += exps[i] * logs[i];
             }
@@ -300,17 +291,8 @@ mpz_class IndexCalculus::solve(const mpz_class& b){
 
     vector<thread> threads;
 
-    for (int i = 0; i < T; i++) {
-        threads.emplace_back(
-            solve_worker,
-            this,
-            cref(b),
-            cref(logs),
-            ref(done),
-            ref(result),
-            ref(rel_mtx)
-        );
-    }
+    for (int i = 0; i < T; i++)
+        threads.emplace_back(solve_worker, this, cref(b), cref(logs), ref(done), ref(result), ref(res_mtx));
 
     for (auto& t : threads) t.join();
 
@@ -319,34 +301,50 @@ mpz_class IndexCalculus::solve(const mpz_class& b){
 
 
 int main() {
+    mpz_class p, a, b;
+
+    cout << "Enter group mod: \n";
+    cin >> p;
+    cout << "Not generator: \n";
+    cin >> a;
+    cout << "Enter b: \n";
+    cin >> b;
+
+    /*
     mpz_class p("131421701276962801");
     mpz_class a("20774904390137831");
     mpz_class b("9890141120090379");
-
-    //mpz_class p = 97;
-    //mpz_class a = 5;
-    //mpz_class b = 11;
+    */
 
     IndexCalculus ic(p, a);
+    auto start1 = high_resolution_clock::now();
+    auto fut = async(launch::async, [&] {return ic.solve(b);});
 
-    cout << "p = " << p << "\n";
-    cout << "a = " << a << "\n";
-    cout << "b = " << b << "\n\n";
+    if (fut.wait_for(chrono::minutes(5)) == future_status::ready) {
+        mpz_class x = fut.get();
+        cout << "Result x = " << x << "\n";
 
-    mpz_class x = ic.solve(b);
+        auto end1 = high_resolution_clock::now();
+        auto duration1 = duration_cast<milliseconds>(end1 - start1);
 
-    cout << "Result x = " << x << "\n";
+        cout << "Time = " << duration1.count() << " milliseconds\n";
 
-    mpz_class check;
-    mpz_powm(check.get_mpz_t(), a.get_mpz_t(), x.get_mpz_t(), p.get_mpz_t());
+        mpz_class check;
+        mpz_powm(check.get_mpz_t(), a.get_mpz_t(), x.get_mpz_t(), p.get_mpz_t());
 
-    cout << "Verification: a^x mod p = " << check << "\n";
+        cout << "Verification: a^x mod p = " << check << "\n";
 
-    if (check == b)
-        cout << "Correct\n";
-    else
-        cout << "Incorrect\n";
+        if (check == b) cout << "Correct\n";
+        else cout << "Incorrect\n";
+
+    } else {
+        cout << "Timeout\n";
+        exit(1);
+    }
+
 
     return 0;
 }
+
+
 
